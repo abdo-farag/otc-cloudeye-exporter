@@ -1,0 +1,32 @@
+global:
+  prefix: "opentelekomcloud"
+  port: "0.0.0.0:9098"
+  enable_https: false
+  https_port: "0.0.0.0:9099"
+  ## generate self-signed certificates for HTTPS using the following command:
+  ## openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem -days 365 -subj "/CN=localhost"
+  tls_cert: "cert.pem"
+  tls_key: "key.pem"
+  metric_path: "/metrics"
+  scrape_batch_size: 300
+  resource_sync_interval_minutes: 1
+  rms_retry_times: 1
+  namespaces: "SYS.ECS,SYS.VPC,SYS.RDS"
+  endpoints_conf_path: "./endpoints.yml"
+  ignore_ssl_verify: true
+  export_rms_labels:
+    resource_name: true
+    project_id: false
+    project_name: true
+    domain_name: true
+    tags: true
+auth:
+  region: "eu-de"
+  auth_url: "https://iam.eu-de.otc.t-systems.com/v3"
+  projects:
+    - name: "eu-de_test"
+    - name: "eu-de"
+  domain_id: "OS_DOMAIN_ID"
+  domain_name: "OS_DOMAIN_NAME"
+  access_key: "OS_ACCESS_KEY"
+  secret_key: "OS_SECRET_KEY"
