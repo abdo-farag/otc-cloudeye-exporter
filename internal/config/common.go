@@ -2,6 +2,7 @@ package config
 
 import (
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/core/config"
+	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
 )
 
 // GetHttpConfig builds an HTTP config with optional proxy support for RMS or any HuaweiCloud SDK client.
@@ -9,6 +10,7 @@ func GetHttpConfig() *config.HttpConfig {
 	httpConfig := config.DefaultHttpConfig()
 
 	if !isProxyConfigured() {
+		logs.Debugf("Proxy not configured; using direct connection.")
 		return httpConfig
 	}
 
@@ -21,6 +23,8 @@ func GetHttpConfig() *config.HttpConfig {
 	if isProxyAuthConfigured() {
 		proxy.Username = AppConfig.Global.UserName
 		proxy.Password = AppConfig.Global.Password
+	} else {
+		logs.Debugf("Proxy authentication not configured; using proxy without auth.")
 	}
 
 	httpConfig.HttpProxy = &proxy

@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"regexp"
 	"strings"
@@ -14,6 +13,8 @@ import (
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/core/sdkerr"
 	iam "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/iam/v3"
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/services/iam/v3/model"
+
+	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
 )
 
 // ---------- Struct Definitions ----------
@@ -106,7 +107,7 @@ func LoadConfig(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
-	log.Printf("✅ Loaded config from %s", path)
+	logs.Infof("✅ Loaded config from %s", path)
 
 	// Substitute env vars in Auth fields if present
 	resolveAuthEnv(&cfg.Auth)
@@ -149,9 +150,9 @@ func resolveProjectIDs(auth *CloudAuth) error {
 			if proj.ID == "" {
 				if id, ok := projectMap[proj.Name]; ok {
 					auth.Projects[i].ID = id
-					log.Printf("ℹ️ Resolved project %s to ID %s", proj.Name, id)
+					logs.Infof("ℹ️ Resolved project %s to ID %s", proj.Name, id)
 				} else {
-					log.Printf("⚠️ Project name %s not found for region %s", proj.Name, auth.Region)
+					logs.Warnf("⚠️ Project name %s not found for region %s", proj.Name, auth.Region)
 				}
 			}
 		}

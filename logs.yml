@@ -1,0 +1,11 @@
+logging:
+  - level: "info"
+    type: "FILE"
+    filename: "app.log"
+    encoder: "JSON"
+    time_format: "02.01.2006 15:04:05"
+    max_size: 104857600   # bytes, 100 MB
+    max_backups: 10
+    max_age: 30
+    enabled: true
+    compress: true
