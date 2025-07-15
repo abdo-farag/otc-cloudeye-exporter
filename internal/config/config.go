@@ -122,15 +122,17 @@ func LoadConfig(path string) (*Config, error) {
 }
 
 // ---------- Resolve Project IDs ----------
-
 func resolveProjectIDs(auth *CloudAuth) error {
-	allProjects, err := fetchAllProjects(*auth)
+	allProjects, err := FetchAllProjects(*auth)
 	if err != nil {
 		return err
 	}
 
 	regionPrefix := auth.Region + "_" // e.g. "eu-de_"
 	projectMap := make(map[string]string)
+
+	// Log the fetched projects for debugging
+	logs.Infof("Fetched projects: %v", allProjects)
 
 	// Filter and map only matching projects
 	for _, p := range allProjects {
@@ -152,7 +154,9 @@ func resolveProjectIDs(auth *CloudAuth) error {
 					auth.Projects[i].ID = id
 					logs.Infof("ℹ️ Resolved project %s to ID %s", proj.Name, id)
 				} else {
-					logs.Warnf("⚠️ Project name %s not found for region %s", proj.Name, auth.Region)
+					// Log the error but do not stop the program, continue with other projects
+					logs.Warnf("⚠️ Project %s not found for region %s, skipping.", proj.Name, auth.Region)
+					// Instead of returning an error, we just log it and continue
 				}
 			}
 		}
@@ -161,9 +165,10 @@ func resolveProjectIDs(auth *CloudAuth) error {
 	return nil
 }
 
+
 // ---------- Fetch All Projects ----------
 
-func fetchAllProjects(auth CloudAuth) ([]ProjectInfo, error) {
+func FetchAllProjects(auth CloudAuth) ([]ProjectInfo, error) {
 	creds, err := global.NewCredentialsBuilder().
 		WithAk(auth.AccessKey).
 		WithSk(auth.SecretKey).
