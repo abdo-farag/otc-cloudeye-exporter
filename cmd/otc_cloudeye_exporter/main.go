@@ -13,6 +13,7 @@ import (
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/server"
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/clients"
+	"github.com/abdo-farag/otc-cloudeye-exporter/internal/collector"
 )
 
 // parseNamespaces splits a comma-separated list of namespaces into a slice.
@@ -75,23 +76,30 @@ func validateProject(auth *config.CloudAuth, projectName string) error {
 }
 
 // prometheusHandler handles the /metrics endpoint logic.
-func prometheusHandler(defaultNamespaces []string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var namespaces []string
-		if ns := r.URL.Query().Get("ns"); ns != "" {
-			namespaces = strings.Split(ns, ",")
-			logs.Infof("Requested namespaces: %v", namespaces)
-		} else {
-			namespaces = defaultNamespaces
-			logs.Infof("Using static namespaces: %v", namespaces)
-		}
+func prometheusHandler(cfg *config.Config, projectClients []*clients.Clients, defaultNamespaces []string) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        var namespaces []string
+        if ns := r.URL.Query().Get("ns"); ns != "" {
+            namespaces = strings.Split(ns, ",")
+            logs.Infof("Requested namespaces: %v", namespaces)
+        } else {
+            namespaces = defaultNamespaces
+            logs.Infof("Using static namespaces: %v", namespaces)
+        }
 
-		reg := prometheus.NewRegistry()
-		// TODO: Register your collectors with reg here!
+        reg := prometheus.NewRegistry()
 
-		promhttp.HandlerFor(reg, promhttp.HandlerOpts{}).ServeHTTP(w, r)
-	}
+        // Register your collectors for each client
+        for _, client := range projectClients {
+            collector := collectors.NewCloudEyeCollector(cfg, namespaces)
+            collector.AttachClient(client)
+            reg.MustRegister(collector)
+        }
+
+        promhttp.HandlerFor(reg, promhttp.HandlerOpts{}).ServeHTTP(w, r)
+    }
 }
+
 
 func main() {
 	// --- Step 0: Initialize logging ---
@@ -143,7 +151,7 @@ func main() {
 	logs.Infof("OTC clients initialized successfully for %d projects", len(projectClients))
 
 	// --- Step 2: Register Prometheus metrics endpoint ---
-	http.HandleFunc(cfg.Global.MetricPath, prometheusHandler(parsedNamespaces))
+	http.HandleFunc(cfg.Global.MetricPath, prometheusHandler(cfg, projectClients, parsedNamespaces))
 
 	// --- Step 3: Start Server ---
 	logs.Infof("📡 CloudEye metrics at: %s?ns=%s", cfg.Global.MetricPath, cfg.Global.Namespaces)
