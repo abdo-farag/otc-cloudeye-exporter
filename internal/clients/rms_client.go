@@ -80,13 +80,13 @@ func (r *RmsClient) GetResourceByID(resourceID string, resourceName string) (map
 	if entry, ok := rmsCache.Load(cacheKey); ok {
 		if cached, ok := entry.(cachedRmsEntry); ok {
 			if time.Since(cached.timestamp) < rmsCacheTTL {
-				logs.Infof("Cache hit for resource: %s", cacheKey)
+				logs.Debugf("Cache hit for resource: %s", cacheKey)
 				return cached.data, nil
 			}
 		}
 	}
 
-	logs.Infof("Cache miss for resource: %s, fetching from RMS", cacheKey)
+	logs.Debugf("Cache miss for resource: %s, fetching from RMS", cacheKey)
 
 	limit := int32(200)
 	req := &model.ListAllResourcesRequest{

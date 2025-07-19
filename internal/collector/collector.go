@@ -3,7 +3,6 @@ package collectors
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/config"
@@ -40,32 +39,7 @@ func (c *CloudEyeCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	for _, namespace := range c.services {
-		// ---- Dummy data for testing ----
-		metricData := []MetricExport{
-			{
-				MetricName: "cpu_util",
-				Labels: map[string]string{
-					"resource_id":   "test-res-123",
-					"resource_name": "demo-server",
-					"zone":          "eu-de-01",
-				},
-				Value:     55.0,
-				Unit:      "percent",
-				Timestamp: time.Now(),
-			},
-			{
-				MetricName: "mem_util",
-				Labels: map[string]string{
-					"resource_id":   "test-res-456",
-					"resource_name": "demo-db",
-					"zone":          "eu-de-01",
-				},
-				Value:     73.3,
-				Unit:      "percent",
-				Timestamp: time.Now(),
-			},
-		}
-		// ---- End dummy block ----
+		metricData := ExportMetricValuesBatch(c.client, c.cfg, namespace)
 
 		// Keep track of seen metrics to avoid duplicates
 		seenMetrics := make(map[string]struct{})

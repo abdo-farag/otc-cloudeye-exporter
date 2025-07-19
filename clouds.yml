@@ -1,5 +1,4 @@
 global:
-  prefix: "opentelekomcloud"
   port: "0.0.0.0:9098"
   enable_https: false
   https_port: "0.0.0.0:9099"
@@ -23,9 +22,9 @@ global:
 auth:
   region: "eu-de"
   auth_url: "https://iam.eu-de.otc.t-systems.com/v3"
-  projects:
-    - name: "eu-de_test"
-    - name: "eu-de"
+  # projects:
+  #   - name: "eu-de_test"
+  #   - name: "eu-de"
   domain_id: "OS_DOMAIN_ID"
   domain_name: "OS_DOMAIN_NAME"
   access_key: "OS_ACCESS_KEY"

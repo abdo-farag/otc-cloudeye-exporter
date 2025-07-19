@@ -40,7 +40,6 @@ type Global struct {
 	HTTPSPort                   string `yaml:"https_port"`
 	TLSCert                     string `yaml:"tls_cert"`
 	TLSKey                      string `yaml:"tls_key"`
-	Prefix                      string `yaml:"prefix"`
 	MetricPath                  string `yaml:"metric_path"`
 	ScrapeBatchSize             int    `yaml:"scrape_batch_size"`
 	ResourceSyncIntervalMinutes int    `yaml:"resource_sync_interval_minutes"`
