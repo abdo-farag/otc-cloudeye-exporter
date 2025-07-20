@@ -5,6 +5,7 @@ import (
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/config"
 	ces "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/ces/v1"
 	cesv2 "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/ces/v2"
+	evs "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/evs/v2"
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
 )
 
@@ -12,6 +13,7 @@ type Clients struct {
 	CloudEyeV1 *ces.CesClient
 	CloudEyeV2 *cesv2.CesClient
 	RMS        *RmsClient
+	EVS        *evs.EvsClient
 }
 
 // NewClientsWithEndpoints creates all service clients using static OTC endpoints
@@ -20,6 +22,7 @@ func NewClientsWithEndpoints(cfg *config.Config, epCfg *config.EndpointConfig) (
 	region := epCfg.Region
 	cesEndpoint := fmt.Sprintf("https://ces.%s.otc.t-systems.com", region)
 	rmsEndpoint := fmt.Sprintf("https://rms.%s.otc.t-systems.com", region)
+	evsEndpoint := fmt.Sprintf("https://evs.%s.otc.t-systems.com", region)
 
 	// Log the region and endpoints initialization
 	logs.Info("Initializing clients for region: ", region)
@@ -46,10 +49,17 @@ func NewClientsWithEndpoints(cfg *config.Config, epCfg *config.EndpointConfig) (
 			continue
 		}
 
+		evsClient, err := InitEVSClient(cfg, evsEndpoint, project.ID)
+		if err != nil {
+			logs.Errorf("Error initializing EVS client: %v", err)
+		}
+
+
 		client := &Clients{
 			CloudEyeV1: v1Client,
 			CloudEyeV2: v2Client,
 			RMS:        rmsClient,
+			EVS: 		evsClient,
 		}
 
 		clientsList = append(clientsList, client)
@@ -82,5 +92,9 @@ func (c *Clients) Close() {
 	if c.RMS != nil {
 		// Add the RMS client cleanup logic here, if applicable
 		logs.Info("Closed RMS client")
+	}
+
+	if c.EVS != nil {
+		logs.Info("Close EVS Client")
 	}
 }

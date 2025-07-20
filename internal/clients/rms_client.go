@@ -11,7 +11,7 @@ import (
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/core/auth/global"
 	rms "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/rms/v1"
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/services/rms/v1/model"
-	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"  // Importing logs package
+	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
 )
 
 type cachedRmsEntry struct {

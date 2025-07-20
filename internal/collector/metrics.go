@@ -74,9 +74,9 @@ func cloneMap(in map[string]string) map[string]string {
 
 func DefaultRetryConfig() *RetryConfig {
 	return &RetryConfig{
-		MaxRetries:        3,
-		InitialBackoff:    1 * time.Second,
-		MaxBackoff:        30 * time.Second,
+		MaxRetries:        5,
+		InitialBackoff:    5 * time.Second,
+		MaxBackoff:        2 * time.Minute,
 		BackoffMultiplier: 2.0,
 		RetryableErrors: []string{
 			"408", "429", "500", "503", "timeout",
@@ -208,6 +208,7 @@ func ExportMetricValuesBatch(client *clients.Clients, cfg *config.Config, namesp
 		go func(m cesModel.BatchMetricData) {
 			defer wg.Done()
 			labels, resourceID := extractLabelsAndResourceID(m, namespace)
+			labels, resourceID = handleEVSIfNeeded(labels, resourceID, namespace, client)
 			labels = enrichWithRMSIfNeeded(labels, resourceID, namespace, client, cfg, retryConfig)
 
 			if _, exists := labels["resource_name"]; !exists {
@@ -378,6 +379,46 @@ func enrichWithRMSIfNeeded(labels map[string]string, resourceID, namespace strin
 		}
 	}
 	return labels
+}
+
+func handleEVSIfNeeded(labels map[string]string, resourceID, namespace string, client *clients.Clients) (map[string]string, string) {
+	if strings.Contains(namespace, "EVS") {
+		lastDash := strings.LastIndex(resourceID, "-")
+		if lastDash > 0 && lastDash < len(resourceID)-1 {
+			vmID := resourceID[:lastDash]
+			device := resourceID[lastDash+1:]
+			actualDiskID, diskName := lookupEVSID(client, vmID, device)
+			if actualDiskID != "" {
+				labels["resource_id"] = actualDiskID
+				if diskName != "" {
+					labels["disk_name"] = diskName
+				}
+				return labels, actualDiskID
+			} else {
+				logs.Warnf("Failed to resolve EVS disk ID for %s", resourceID)
+			}
+		}
+	}
+	return labels, resourceID
+}
+
+func lookupEVSID(client *clients.Clients, vmID, device string) (string, string) {
+	volumes, err := client.ListVolumes()
+	if err != nil {
+		logs.Errorf("Error fetching EVS volumes: %v", err)
+		return "", ""
+	}
+
+	devicePath := "/dev/" + device // e.g., vda -> /dev/vda
+
+	for _, vol := range volumes {
+		for _, attach := range vol.Attachments {
+			if attach.ServerId == vmID && attach.Device == devicePath {
+				return vol.Id, vol.Name
+			}
+		}
+	}
+	return "", ""
 }
 
 func convertDatapointsToExports(m cesModel.BatchMetricData, labels map[string]string, unit string) []MetricExport {

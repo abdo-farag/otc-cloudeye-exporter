@@ -38,7 +38,7 @@ type logger interface {
 
 // Config defines a single logging target and its parameters.
 type Config struct {
-	Level      zapcore.Level `yaml:"level"`
+	Level      LogLevel `yaml:"level"`
 	Type       string        `yaml:"type"` // "FILE" or "STDOUT"
 	Filename   string        `yaml:"filename,omitempty"`
 	Encoder    string        `yaml:"encoder,omitempty"` // "JSON" or "CONSOLE"
@@ -65,6 +65,37 @@ func Errorf(format string, args ...interface{}) { Logger.Errorf(format, args...)
 func Fatal(args ...interface{})                { Logger.Fatal(args...) }
 func Fatalf(format string, args ...interface{}) { Logger.Fatalf(format, args...) }
 func Flush()                                   { Logger.Flush() }
+
+type LogLevel zapcore.Level
+
+func (l *LogLevel) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var levelStr string
+	if err := unmarshal(&levelStr); err != nil {
+		return err
+	}
+	level := zapcore.InfoLevel // default
+	switch strings.ToLower(levelStr) {
+	case "debug":
+		level = zapcore.DebugLevel
+	case "info":
+		level = zapcore.InfoLevel
+	case "warn":
+		level = zapcore.WarnLevel
+	case "error":
+		level = zapcore.ErrorLevel
+	case "dpanic":
+		level = zapcore.DPanicLevel
+	case "panic":
+		level = zapcore.PanicLevel
+	case "fatal":
+		level = zapcore.FatalLevel
+	default:
+		return fmt.Errorf("unknown log level: %q", levelStr)
+	}
+	*l = LogLevel(level)
+	return nil
+}
+
 
 // ---- Configuration loader ----
 
@@ -216,7 +247,7 @@ func makeWriteSync(c *Config) zapcore.WriteSyncer {
 func makeZapCore(c *Config) zapcore.Core {
 	encoder := makeEncoder(c)
 	w := makeWriteSync(c)
-	core := zapcore.NewCore(encoder, w, c.Level)
+	core := zapcore.NewCore(encoder, w, zapcore.Level(c.Level))
 	return core
 }
 

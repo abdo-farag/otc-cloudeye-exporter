@@ -1,167 +1,86 @@
 region: "eu-de"
 
 services:
-  # Agent-based ECS Metrics
-  AGT.ECS: "https://ecs.{region}.otc.t-systems.com"
-
-  # Elastic Cloud Server (ECS)
-  SYS.ECS: "https://ecs.{region}.otc.t-systems.com"
-  
-  # API Gateway (APIG)
-  SYS.APIG: "https://apig.{region}.otc.t-systems.com"
-
-  # Anti-DDoS
-  SYS.DDOS: "https://antiddos.{region}.otc.t-systems.com"
-
-  # Application Operations Management (AOM)
-  SYS.AOM: "https://aom.{region}.otc.t-systems.com"
-
-  # Auto Scaling (AS)
-  SYS.AS: "https://as.{region}.otc.t-systems.com"
-
-  # Bare Metal Server (BMS)
-  SERVICE.BMS: "https://ecs.{region}.otc.t-systems.com"
-
-  # Cloud Backup and Recovery (CBR)
-  SYS.CBR: "https://cbr.{region}.otc.t-systems.com"
-
-  # Cloud Container Engine (CCE)
-  SYS.CCE: "https://cce.{region}.otc.t-systems.com"
-
-  # Cloud Data Migration (CDM)
-  SYS.CDM: "https://cdm.{region}.otc.t-systems.com"
+  # Resource Management Service (RMS)
+  SYS.RMS: "https://rms.{region}.otc.t-systems.com"
 
   # Cloud Eye (CES)
   SYS.CES: "https://ces.{region}.otc.t-systems.com"
 
-  # Cloud Firewall (CFW)
-  SYS.CFW: "https://cfw.{region}.otc.t-systems.com"
+  # Agent-based ECS Metrics
+  AGT.ECS: "https://ecs.{region}.otc.t-systems.com"
 
-  # Cloud Search Service (CSS)
-  SYS.CSS: "https://css.{region}.otc.t-systems.com"
+  # Elastic Cloud Server (ECS) – SYS.ECS
+  SYS.ECS: "https://ecs.{region}.otc.t-systems.com"
 
-  # Cloud Server Backup Service (CSBS)
-  SYS.CSBS: "https://csbs.{region}.otc.t-systems.com"
+  # Bare Metal Server – SERVICE.BMS
+  SERVICE.BMS: "https://ecs.{region}.otc.t-systems.com"
 
-  # Cloud Trace Service (CTS)
-  SYS.CTS: "https://cts.{region}.otc.t-systems.com"
+  # Auto Scaling – SYS.AS
+  SYS.AS: "https://as.{region}.otc.t-systems.com"
 
-  # Data Connection as a Service (DCAAS)
-  SYS.DCAAS: "https://dcaas.{region}.otc.t-systems.com"
-
-  # Data Ingestion Service (DIS)
-  SYS.DIS: "https://dis.{region}.otc.t-systems.com"
-
-  # Data Lake Insight (DLI)
-  SYS.DLI: "https://dli.{region}.otc.t-systems.com"
-
-  # Data Replication Service (DRS)
-  SYS.DRS: "https://drs.{region}.otc.t-systems.com"
-
-  # Data Warehouse Service (DWS)
-  SYS.DWS: "https://dws.{region}.otc.t-systems.com"
-
-  # DataArts Studio (DAYU)
-  SYS.DAYU: "https://dayu-dlf.{region}.otc.t-systems.com"
-
-  # Dedicated Host (DEH)
-  SYS.DEH: "https://deh.{region}.otc.t-systems.com"
-
-  # Distributed Cache Service (DCS)
-  SYS.DCS: "https://dcs.{region}.otc.t-systems.com"
-
-  # Distributed Database Middleware (DDM)
-  SYS.DDM: "https://ddm.{region}.otc.t-systems.com"
-
-  # Document Database Service (DDS)
-  SYS.DDS: "https://dds.{region}.otc.t-systems.com"
-
-  # Domain Name Service (DNS)
-  SYS.DNS: "https://dns.{region}.otc.t-systems.com"
-
-  # Elastic Volume Service (EVS)
+  # Elastic Volume Service (attached) – SYS.EVS
   SYS.EVS: "https://evs.{region}.otc.t-systems.com"
 
-  # Enterprise Router (ER)
-  SYS.ER: "https://er.{region}.otc.t-systems.com"
-
-  # FunctionGraph
-  SYS.FunctionGraph: "https://functiongraph.{region}.otc.t-systems.com"
-
-  # GaussDB NoSQL
-  SYS.NoSQL: "https://gaussdb-nosql.{region}.otc.t-systems.com"
-
-  # GaussDB (for MySQL)
-  SYS.GAUSSDB: "https://gaussdb-mysql.{region}.otc.t-systems.com"
-
-  # Host Security Service (HSS)
-  SYS.HSS: "https://hss.{region}.otc.t-systems.com"
-
-  # Identity and Access Management (IAM)
-  SYS.IAM: "https://iam.{region}.otc.t-systems.com"
-
-  # Image Management Service (IMS)
-  SYS.IMS: "https://ims.{region}.otc.t-systems.com"
-
-  # Key Management Service (KMS)
-  SYS.KMS: "https://kms.{region}.otc.t-systems.com"
-
-  # Log Tank Service (LTS)
-  SYS.LTS: "https://lts.{region}.otc.t-systems.com"
-
-  # MapReduce Service (MRS)
-  SYS.MRS: "https://mrs.{region}.otc.t-systems.com"
-
-  # ModelArts
-  SYS.ModelArts: "https://modelarts.{region}.otc.t-systems.com"
-
-  # Network Address Translation (NAT)
-  SYS.NAT: "https://nat.{region}.otc.t-systems.com"
-
-  # Object Storage Service (OBS)
+  # Object Storage Service – SYS.OBS
   SYS.OBS: "https://obs.{region}.otc.t-systems.com"
 
-  # Optical Character Recognition (OCR)
-  SYS.OCR: "https://ocr.{region}.otc.t-systems.com"
-
-  # Premium Web Application Firewall (WAF)
-  SYS.WAF: "https://premium-waf.{region}.otc.t-systems.com"
-
-  # PrivateLink Access Service (PLAS)
-  SYS.PLAS: "https://plas.{region}.otc.t-systems.com"
-
-  # Real-Time Stream Processing (RTS)
-  SYS.RTS: "https://rts.{region}.otc.t-systems.com"
-
-  # Relational Database Service (RDS)
-  SYS.RDS: "https://rds.{region}.otc.t-systems.com"
-
-  # Resource Management Service (RMS)
-  SYS.RMS: "https://rms.{region}.otc.t-systems.com"
-
-  # Scalable File Service (SFS)
+  # Scalable File Service – SYS.SFS
   SYS.SFS: "https://sfs.{region}.otc.t-systems.com"
 
-  # Simple Message Notification (SMN)
-  SYS.SMN: "https://smn.{region}.otc.t-systems.com"
+  # SFS Turbo – SYS.EFS
+  SYS.EFS: "https://efs.{region}.otc.t-systems.com"
 
-  # Software Repository for Container (SWR)
-  SYS.SWR: "https://swr-api.{region}.otc.t-systems.com"
+  # Cloud Backup and Recovery – SYS.CBR
+  SYS.CBR: "https://cbr.{region}.otc.t-systems.com"
 
-  # Storage Disaster Recovery Service (SDRS)
-  SYS.SDRS: "https://sdrs.{region}.otc.t-systems.com"
-
-  # Tag Management Service (TMS)
-  SYS.TMS: "https://tms.{region}.otc.t-systems.com"
-
-  # VPC Endpoint (VPCEP)
-  SYS.VPCEP: "https://vpcep.{region}.otc.t-systems.com"
-
-  # Virtual Private Cloud (VPC)
+  # Virtual Private Cloud (includes EIP & BW) – SYS.VPC
   SYS.VPC: "https://vpc.{region}.otc.t-systems.com"
 
-  # Volume Backup Service (VBS)
-  SYS.VBS: "https://vbs.{region}.otc.t-systems.com"
+  # Elastic Load Balancing – SYS.ELB
+  SYS.ELB: "https://elb.{region}.otc.t-systems.com"
 
-  # Web Application Firewall (WAF)
-  SYS.WAF2: "https://waf.{region}.otc.t-systems.com"
+  # Direct Connect (Data Connection as a Service) – SYS.DCAAS
+  SYS.DCAAS: "https://dcaas.{region}.otc.t-systems.com"
+
+  # NAT Gateway – SYS.NAT
+  SYS.NAT: "https://nat.{region}.otc.t-systems.com"
+
+  # Web Application Firewall – SYS.WAF
+  SYS.WAF: "https://waf.{region}.otc.t-systems.com"
+
+  # Distributed Message Service (Kafka) – SYS.DMS
+  SYS.DMS: "https://dms.{region}.otc.t-systems.com"
+
+  # Distributed Cache Service – SYS.DCS
+  SYS.DCS: "https://dcs.{region}.otc.t-systems.com"
+
+  # Relational Database Service – SYS.RDS
+  SYS.RDS: "https://rds.{region}.otc.t-systems.com"
+
+  # Document Database Service – SYS.DDS
+  SYS.DDS: "https://dds.{region}.otc.t-systems.com"
+
+  # GeminiDB (NoSQL) – SYS.NoSQL
+  SYS.NoSQL: "https://gaussdb-nosql.{region}.otc.t-systems.com"
+
+  # GaussDB (for MySQL) – SYS.GAUSSDB
+  SYS.GAUSSDB: "https://gaussdb-mysql.{region}.otc.t-systems.com"
+
+  # GaussDB (openGauss) – SYS.GAUSSDBV5
+  SYS.GAUSSDBV5: "https://gaussdb-opengauss.{region}.otc.t-systems.com"
+
+  # Data Warehouse Service – SYS.DWS
+  SYS.DWS: "https://dws.{region}.otc.t-systems.com"
+
+  # Cloud Search Service – SYS.ES
+  SYS.ES: "https://es.{region}.otc.t-systems.com"
+
+  # Data Lake Insight (Data Ingestion Service) – SYS.DAYU
+  SYS.DAYU: "https://dayu-dlf.{region}.otc.t-systems.com"
+
+  # Cloud Trace Service – SYS.CTS
+  SYS.CTS: "https://cts.{region}.otc.t-systems.com"
+
+  # Log Tank Service – SYS.LTS
+  SYS.LTS: "https://lts.{region}.otc.t-systems.com"
