@@ -14,21 +14,40 @@ type Clients struct {
 	CloudEyeV2 *cesv2.CesClient
 	RMS        *RmsClient
 	EVS        *evs.EvsClient
+	OBS        *ObsClient
 }
 
 // NewClientsWithEndpoints creates all service clients using static OTC endpoints
 func NewClientsWithEndpoints(cfg *config.Config, epCfg *config.EndpointConfig) ([]*Clients, error) {
 	var clientsList []*Clients
 	region := epCfg.Region
-	cesEndpoint := fmt.Sprintf("https://ces.%s.otc.t-systems.com", region)
-	rmsEndpoint := fmt.Sprintf("https://rms.%s.otc.t-systems.com", region)
-	evsEndpoint := fmt.Sprintf("https://evs.%s.otc.t-systems.com", region)
 
-	// Log the region and endpoints initialization
+	// Strictly require each endpoint to be in YAML!
+	cesEndpoint, ok := epCfg.Services["SYS.CES"]
+	if !ok {
+		logs.Errorf("SYS.CES endpoint not defined in endpoints.yml!")
+		return nil, fmt.Errorf("SYS.CES endpoint missing")
+	}
+	
+	rmsEndpoint, ok := epCfg.Services["SYS.RMS"]
+	if !ok {
+		logs.Errorf("SYS.RMS endpoint not defined in endpoints.yml!")
+		return nil, fmt.Errorf("SYS.RMS endpoint missing")
+	}
+	evsEndpoint, ok := epCfg.Services["SYS.EVS"]
+	if !ok {
+		logs.Errorf("SYS.EVS endpoint not defined in endpoints.yml!")
+		return nil, fmt.Errorf("SYS.EVS endpoint missing")
+	}
+	obsEndpoint, ok := epCfg.Services["SYS.OBS"]
+	if !ok {
+		logs.Errorf("SYS.OBS endpoint not defined in endpoints.yml!")
+		return nil, fmt.Errorf("SYS.OBS endpoint missing")
+	}
+
 	logs.Info("Initializing clients for region: ", region)
 
 	for _, project := range cfg.Auth.Projects {
-		// Log project start
 		logs.Info("Initializing clients for project: ", project.Name)
 
 		v1Client, err := InitCESClient(cfg, cesEndpoint, project.ID)
@@ -51,28 +70,32 @@ func NewClientsWithEndpoints(cfg *config.Config, epCfg *config.EndpointConfig) (
 
 		evsClient, err := InitEVSClient(cfg, evsEndpoint, project.ID)
 		if err != nil {
-			logs.Errorf("Error initializing EVS client: %v", err)
+			logs.Errorf("❌ Failed init EVS client for project %s: %v", project.Name, err)
 		}
 
+		obsClient, err := NewObsClient(cfg, obsEndpoint)
+		if err != nil {
+			logs.Errorf("❌ Failed to init OBS client for project %s: %v", project.Name, err)
+		}
 
 		client := &Clients{
 			CloudEyeV1: v1Client,
 			CloudEyeV2: v2Client,
 			RMS:        rmsClient,
-			EVS: 		evsClient,
+			EVS:        evsClient,
+			OBS:        obsClient,
 		}
-
 		clientsList = append(clientsList, client)
 	}
 
 	if len(clientsList) == 0 {
 		logs.Errorf("No CES clients initialized successfully")
-		logs.Flush()  // Ensure logs are flushed before exiting
+		logs.Flush()
 		return nil, fmt.Errorf("no CES clients initialized successfully")
 	}
 
 	logs.Info("Successfully initialized clients")
-	logs.Flush()  // Ensure logs are flushed after initialization
+	logs.Flush()
 	return clientsList, nil
 }
 
@@ -95,6 +118,10 @@ func (c *Clients) Close() {
 	}
 
 	if c.EVS != nil {
+		logs.Info("Close EVS Client")
+	}
+
+	if c.OBS != nil {
 		logs.Info("Close EVS Client")
 	}
 }

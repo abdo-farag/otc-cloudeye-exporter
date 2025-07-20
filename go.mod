@@ -3,6 +3,7 @@ module github.com/abdo-farag/otc-cloudeye-exporter
 go 1.24.4
 
 require (
+	github.com/huaweicloud/huaweicloud-sdk-go-obs v3.25.4+incompatible
 	github.com/huaweicloud/huaweicloud-sdk-go-v3 v0.1.158
 	github.com/prometheus/client_golang v1.22.0
 	go.uber.org/zap v1.27.0
@@ -24,8 +25,10 @@ require (
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	go.mongodb.org/mongo-driver v1.13.1 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
-	golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d // indirect
+	golang.org/x/crypto v0.31.0 // indirect
+	golang.org/x/net v0.33.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
+	golang.org/x/text v0.21.0 // indirect
 	google.golang.org/protobuf v1.36.5 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 )

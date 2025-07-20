@@ -39,16 +39,13 @@ func loadConfigs(globalConfigPath, endpointConfigPath string) (*config.Config, *
 
 // getServiceEndpoints builds a namespace->endpoint map.
 func getServiceEndpoints(parsedNamespaces []string, endpointCfg *config.EndpointConfig) map[string]string {
-	serviceEndpoints := make(map[string]string)
-	for _, ns := range parsedNamespaces {
-		endpoint, err := endpointCfg.GetServiceEndpoint(ns)
-		if err != nil {
-			logs.Warnf("No endpoint found for namespace %q in endpoints.yml", ns)
-			continue
-		}
-		serviceEndpoints[ns] = endpoint
-	}
-	return serviceEndpoints
+    serviceEndpoints := make(map[string]string)
+    for key, url := range endpointCfg.Services {
+        // Replace {region} with actual region string!
+        endpoint := strings.ReplaceAll(url, "{region}", endpointCfg.Region)
+        serviceEndpoints[key] = endpoint
+    }
+    return serviceEndpoints
 }
 
 // validateProject checks if a project exists in the configured region
@@ -117,7 +114,6 @@ func main() {
 
 	parsedNamespaces := parseNamespaces(cfg.Global.Namespaces)
 	serviceEndpoints := getServiceEndpoints(parsedNamespaces, endpointCfg)
-	logs.Infof("Using service endpoints: %v", serviceEndpoints)
 
 	// Log endpoint configuration for each namespace
 	for _, ns := range parsedNamespaces {

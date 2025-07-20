@@ -13,6 +13,10 @@ import (
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
 )
 
+// -----------------------------
+// Data Types
+// -----------------------------
+
 type MetricExport struct {
 	MetricName string
 	Labels     map[string]string
@@ -39,38 +43,9 @@ type Attachment struct {
 	Device   string `json:"device"` // like "/dev/vda"
 }
 
-func Ptr[T any](v T) *T {
-	return &v
-}
-
-func safeUnit(u *string) string {
-	if u == nil {
-		return ""
-	}
-	return *u
-}
-
-func safeDimensions(dims *[]cesModel.MetricsDimension) []cesModel.MetricsDimension {
-	if dims == nil {
-		return nil
-	}
-	return *dims
-}
-
-func firstDimensionValue(dims *[]cesModel.MetricsDimension) string {
-	if dims == nil || len(*dims) == 0 {
-		return ""
-	}
-	return (*dims)[0].Value
-}
-
-func cloneMap(in map[string]string) map[string]string {
-	out := make(map[string]string)
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
-}
+// -----------------------------
+// Retry Logic
+// -----------------------------
 
 func DefaultRetryConfig() *RetryConfig {
 	return &RetryConfig{
@@ -131,28 +106,9 @@ func withRetry[T any](operation func() (T, error), config *RetryConfig, operatio
 	return result, fmt.Errorf("operation %s failed after %d attempts: %w", operationName, config.MaxRetries+1, err)
 }
 
-
-
-// getBucketNameFromDimensions extracts bucket name from OBS metric dimensions
-func getBucketNameFromDimensions(dims *[]cesModel.MetricsDimension) string {
-	if dims == nil {
-		return ""
-	}
-
-	for _, dim := range *dims {
-		if strings.ToLower(dim.Name) == "bucket_name" {
-			return dim.Value
-		}
-	}
-	return ""
-}
-
-func shouldSkipRMSLookup(namespace string, resourceID string) bool {
-	if resourceID == "" || resourceID == "unknown" {
-		return true
-	}
-	return false
-}
+// -----------------------------
+// Metric Export Logic (main entry)
+// -----------------------------
 
 func ExportMetricValuesBatch(client *clients.Clients, cfg *config.Config, namespace string) []MetricExport {
 	retryConfig := DefaultRetryConfig()
@@ -209,6 +165,7 @@ func ExportMetricValuesBatch(client *clients.Clients, cfg *config.Config, namesp
 			defer wg.Done()
 			labels, resourceID := extractLabelsAndResourceID(m, namespace)
 			labels, resourceID = handleEVSIfNeeded(labels, resourceID, namespace, client)
+			labels = handleOBSIfNeeded(labels, m, namespace, client, retryConfig)
 			labels = enrichWithRMSIfNeeded(labels, resourceID, namespace, client, cfg, retryConfig)
 
 			if _, exists := labels["resource_name"]; !exists {
@@ -228,8 +185,10 @@ func ExportMetricValuesBatch(client *clients.Clients, cfg *config.Config, namesp
 	return results
 }
 
+// -----------------------------
+// Metric Definition / Fetch Logic
+// -----------------------------
 
-// FetchAllMetricDefinitions returns all metrics for a given namespace with retry logic
 func FetchAllMetricDefinitions(client *clients.Clients, namespace string) ([]cesModel.MetricInfoList, error) {
 	limit := int32(1000)
 	req := &cesModel.ListMetricsRequest{
@@ -263,7 +222,6 @@ func FetchAllMetricDefinitions(client *clients.Clients, namespace string) ([]ces
 	return result, nil
 }
 
-// fetchMetricTimeSeries gets time-series data for provided metrics with retry logic
 func fetchMetricTimeSeries(client *clients.Clients, metrics []cesModel.MetricInfoList, from, to int64, period string) (*[]cesModel.BatchMetricData, error) {
 	var batchMetrics []cesModel.MetricInfo
 	for _, m := range metrics {
@@ -303,6 +261,10 @@ func fetchMetricTimeSeries(client *clients.Clients, metrics []cesModel.MetricInf
 	}
 	return resp.Metrics, nil
 }
+
+// -----------------------------
+// Label/Resource Enrichment
+// -----------------------------
 
 func extractLabelsAndResourceID(m cesModel.BatchMetricData, namespace string) (map[string]string, string) {
 	labels := make(map[string]string)
@@ -394,9 +356,8 @@ func handleEVSIfNeeded(labels map[string]string, resourceID, namespace string, c
 					labels["disk_name"] = diskName
 				}
 				return labels, actualDiskID
-			} else {
-				logs.Warnf("Failed to resolve EVS disk ID for %s", resourceID)
 			}
+			logs.Warnf("Failed to resolve EVS disk ID for %s", resourceID)
 		}
 	}
 	return labels, resourceID
@@ -408,9 +369,7 @@ func lookupEVSID(client *clients.Clients, vmID, device string) (string, string) 
 		logs.Errorf("Error fetching EVS volumes: %v", err)
 		return "", ""
 	}
-
-	devicePath := "/dev/" + device // e.g., vda -> /dev/vda
-
+	devicePath := "/dev/" + device
 	for _, vol := range volumes {
 		for _, attach := range vol.Attachments {
 			if attach.ServerId == vmID && attach.Device == devicePath {
@@ -420,6 +379,51 @@ func lookupEVSID(client *clients.Clients, vmID, device string) (string, string) 
 	}
 	return "", ""
 }
+
+func handleOBSIfNeeded(labels map[string]string, m cesModel.BatchMetricData, namespace string, client *clients.Clients, retryConfig *RetryConfig) map[string]string {
+	if namespace == "SYS.OBS" {
+		bucketName := getBucketNameFromDimensions(m.Dimensions)
+		if bucketName != "" {
+			labels["bucket_name"] = bucketName
+
+			// ---- Enrich with bucket tags and info ----
+			if client.OBS != nil {
+				// 1. Try to get tags (handle error gracefully)
+				if tags, err := client.OBS.GetBucketTags(bucketName); err == nil {
+					for k, v := range tags {
+						// Add as label (optional: prefix, like "tag_")
+						labels["tag_"+k] = v
+					}
+					logs.Debugf("Added %d bucket tags to labels for bucket %s", len(tags), bucketName)
+				} else {
+					logs.Warnf("Could not fetch tags for OBS bucket %s: %v", bucketName, err)
+				}
+				// 2. Try to get info (like region/location)
+				if info, err := client.OBS.GetBucketInfo(bucketName); err == nil {
+					for k, v := range info {
+						labels[k] = v
+					}
+					logs.Debugf("Added bucket info labels for bucket %s", bucketName)
+				} else {
+					logs.Warnf("Could not fetch info for OBS bucket %s: %v", bucketName, err)
+				}
+			}
+			// ---- ----
+		} else {
+			if tenantID, exists := labels["tenant_id"]; exists && labels["resource_id"] == tenantID {
+				labels["resource_name"] = "obs_service"
+				labels["resource_id"] = "obs_service"
+			} else {
+				labels["resource_name"] = labels["resource_id"]
+			}
+		}
+	}
+	return labels
+}
+
+// -----------------------------
+// Metric Data Conversion
+// -----------------------------
 
 func convertDatapointsToExports(m cesModel.BatchMetricData, labels map[string]string, unit string) []MetricExport {
 	localResults := make([]MetricExport, 0)
@@ -437,11 +441,9 @@ func convertDatapointsToExports(m cesModel.BatchMetricData, labels map[string]st
 		})
 	} else {
 		for _, dp := range m.Datapoints {
-			var value float64
+			value := 0.0
 			if dp.Average != nil {
 				value = *dp.Average
-			} else {
-				value = 0
 			}
 			timestamp := time.Unix(0, dp.Timestamp*int64(time.Millisecond))
 			labelsWithUnit := cloneMap(labels)
@@ -458,4 +460,72 @@ func convertDatapointsToExports(m cesModel.BatchMetricData, labels map[string]st
 		}
 	}
 	return localResults
+}
+
+// -----------------------------
+// Helpers (kept for clarity/reuse)
+// -----------------------------
+
+func Ptr[T any](v T) *T { return &v }
+
+func safeUnit(u *string) string {
+	if u == nil {
+		return ""
+	}
+	return *u
+}
+
+func safeDimensions(dims *[]cesModel.MetricsDimension) []cesModel.MetricsDimension {
+	if dims == nil {
+		return nil
+	}
+	return *dims
+}
+
+func firstDimensionValue(dims *[]cesModel.MetricsDimension) string {
+	if dims == nil || len(*dims) == 0 {
+		return ""
+	}
+	return (*dims)[0].Value
+}
+
+func cloneMap(in map[string]string) map[string]string {
+	out := make(map[string]string)
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func isOBSOperationName(value string) bool {
+	obsOperations := []string{
+		"HEAD_OBJECT", "PUT_OBJECT", "DELETE_OBJECT", "GET_OBJECT",
+		"PUT_PART", "POST_UPLOAD_INIT", "POST_UPLOAD_COMPLETE",
+		"LIST_OBJECTS", "DELETE_OBJECTS", "COPY_OBJECT",
+		"HEAD_BUCKET", "LIST_BUCKET_OBJECTS", "LIST_BUCKET_UPLOADS",
+		"GET_BUCKET_LOCATION", "GET_BUCKET_POLICY", "PUT_BUCKET_POLICY",
+		"DELETE_BUCKET_POLICY", "GET_BUCKET_ACL", "PUT_BUCKET_ACL",
+	}
+	for _, op := range obsOperations {
+		if value == op {
+			return true
+		}
+	}
+	return false
+}
+
+func getBucketNameFromDimensions(dims *[]cesModel.MetricsDimension) string {
+	if dims == nil {
+		return ""
+	}
+	for _, dim := range *dims {
+		if strings.ToLower(dim.Name) == "bucket_name" {
+			return dim.Value
+		}
+	}
+	return ""
+}
+
+func shouldSkipRMSLookup(namespace string, resourceID string) bool {
+	return resourceID == "" || resourceID == "unknown"
 }

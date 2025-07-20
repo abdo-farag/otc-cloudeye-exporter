@@ -49,6 +49,9 @@ services:
   # Web Application Firewall – SYS.WAF
   SYS.WAF: "https://waf.{region}.otc.t-systems.com"
 
+  # # Cloud Firewall - SYS.CFW
+  # SYS.CFW: "https://cfw.{region}.otc.t-systems.com"
+
   # Distributed Message Service (Kafka) – SYS.DMS
   SYS.DMS: "https://dms.{region}.otc.t-systems.com"
 
