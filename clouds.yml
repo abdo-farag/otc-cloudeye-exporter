@@ -22,9 +22,7 @@ global:
 auth:
   region: "eu-de"
   auth_url: "https://iam.eu-de.otc.t-systems.com/v3"
-  # projects:
-  #   - name: "eu-de_test"
-  #   - name: "eu-de"
+  projects:
   domain_id: "OS_DOMAIN_ID"
   domain_name: "OS_DOMAIN_NAME"
   access_key: "OS_ACCESS_KEY"

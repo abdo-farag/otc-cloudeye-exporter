@@ -1,3 +1,5 @@
 .env
 *.log
 log/**
+otc-cloudeye-exporter
+build/**

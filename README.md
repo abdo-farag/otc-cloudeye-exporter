@@ -41,9 +41,10 @@ auth:
   region: "eu-de"
   # If no project set it will scrap all project for the selected namespace/s
   projects:
-    - name: "project-prod"
-    - name: "project-staging"
-    - name: "project-dev"
+    - name: "eu-de_prod"
+    - name: "eu_de_staging"
+    - name: "eu_de_dev"
+    - name: "eu_de"
 
 global:
   metric_path: "/metrics"
@@ -90,14 +91,22 @@ logging:
       encoder: console
 ```
 
+### Modify the env file with your tenant values
+```bash
+cat > .env << 'EOF'
+OS_DOMAIN_ID=your_domain_id_here
+OS_DOMAIN_NAME=your_domain_name_here
+OS_ACCESS_KEY=your_access_key_here
+OS_SECRET_KEY=your_secret_key_here
+EOF
+
+source .env
+```
+
 ### Running the Exporter
 
-```bash
-# Use default config file (clouds.yml)
-./otc-cloudeye-exporter
-
-# Specify custom config file
-./otc-cloudeye-exporter -config /path/to/custom-config.yml
+```
+./otc-cloudeye-exporter -config ./clouds.yml
 ```
 
 ## 📊 Usage
@@ -195,9 +204,26 @@ The exporter serves on the configured port and will respond to health checks on 
 
 ## 🐳 Docker Deployment
 
+```bash
+docker run --rm --name cloudeye-exporter -p 9098:9098 -p 9099:9099 \
+--env-file .env \
+ghcr.io/abdo-farag/otc-cloudeye-exporter:latest
 ```
-docker run --rm --name otc-cloudeye-exporter -p 9098:9098 -p 9099:9099 cloudastro/otc-cloudeye-exporter
+
+### Or
+```bash
+source .env
+
+docker run --rm --name cloudeye-exporter -p 9098:9098 -p 9099:9099 \
+  -e OS_DOMAIN_ID=${OS_DOMAIN_ID} \
+  -e OS_DOMAIN_NAME=${OS_DOMAIN_NAME} \
+  -e OS_ACCESS_KEY=${OS_ACCESS_KEY} \
+  -e OS_SECRET_KEY=${OS_SECRET_KEY} \
+  ghcr.io/abdo-farag/otc-cloudeye-exporter:latest
 ```
+
+### using env file
+
 
 ## 📈 Prometheus Integration
 
