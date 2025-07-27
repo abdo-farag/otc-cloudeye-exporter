@@ -1,0 +1,21 @@
+apiVersion: v2
+name: otc-cloudeye-exporter
+description: A Helm chart for OpenTelekomCloud CloudEye Exporter - Prometheus metrics exporter
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - prometheus
+  - exporter
+  - monitoring
+  - opentelekomcloud
+  - cloudeye
+home: https://github.com/abdog-farag/otc-cloudeye-exporter
+sources:
+  - https://github.com/abdog-farag/otc-cloudeye-exporter
+maintainers:
+  - name: Abdelfadeel Farag
+    email: abdofarag85@gmail.com
+icon: https://raw.githubusercontent.com/prometheus/prometheus/main/web/ui/static/img/prometheus_logo.svg
+annotations:
+  category: Monitoring

@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "otc-cloudeye-exporter.fullname" . }}-config
+  labels:
+    {{- include "otc-cloudeye-exporter.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    app:
+      name: {{ .Values.config.app.name | quote }}
+      version: {{ .Values.config.app.version | quote }}
+      
+    server:
+      metrics_port: {{ .Values.config.server.metrics_port }}
+      health_port: {{ .Values.config.server.health_port }}
+      host: {{ .Values.config.server.host | quote }}
+      read_timeout: {{ .Values.config.server.read_timeout | quote }}
+      write_timeout: {{ .Values.config.server.write_timeout | quote }}
+      idle_timeout: {{ .Values.config.server.idle_timeout | quote }}
+
+    logging:
+      level: {{ .Values.config.logging.level | quote }}
+      format: {{ .Values.config.logging.format | quote }}
+      output: {{ .Values.config.logging.output | quote }}
+      file:
+        path: {{ .Values.config.logging.file.path | quote }}
+        max_size: {{ .Values.config.logging.file.max_size }}
+        max_backups: {{ .Values.config.logging.file.max_backups }}
+        max_age: {{ .Values.config.logging.file.max_age }}
+        compress: {{ .Values.config.logging.file.compress }}
+      console:
+        colors: {{ .Values.config.logging.console.colors }}
+
+    metrics:
+      path: {{ .Values.config.metrics.path | quote }}
+      namespace: {{ .Values.config.metrics.namespace | quote }}
+      scrape_interval: {{ .Values.config.metrics.scrape_interval | quote }}
+      timeout: {{ .Values.config.metrics.timeout | quote }}
+
+    health:
+      path: {{ .Values.config.health.path | quote }}
+      ready_path: {{ .Values.config.health.ready_path | quote }}
+      live_path: {{ .Values.config.health.live_path | quote }}
+
+    otc:
+      config_file: "/app/clouds.yml"
+      default_region: {{ .Values.config.otc.default_region | quote }}
+      request_timeout: {{ .Values.config.otc.request_timeout | quote }}
+      max_retries: {{ .Values.config.otc.max_retries }}
+      retry_delay: {{ .Values.config.otc.retry_delay | quote }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "otc-cloudeye-exporter.fullname" . }}-clouds
+  labels:
+    {{- include "otc-cloudeye-exporter.labels" . | nindent 4 }}
+data:
+  {{- if .Values.cloudsConfig.existingConfigMap }}
+  # Using existing ConfigMap: {{ .Values.cloudsConfig.existingConfigMap }}
+  {{- else }}
+  clouds.yml: |
+{{ .Values.cloudsConfig.data | indent 4 }}
+  {{- end }}

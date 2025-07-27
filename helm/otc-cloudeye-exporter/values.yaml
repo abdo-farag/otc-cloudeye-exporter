@@ -1,0 +1,166 @@
+# Default values for otc-cloudeye-exporter
+# This is a YAML-formatted file.
+
+replicaCount: 1
+
+image:
+  repository: otc-cloudeye-exporter
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9098"
+  prometheus.io/path: "/metrics"
+
+podSecurityContext:
+  fsGroup: 65532
+  runAsNonRoot: true
+  runAsUser: 65532
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65532
+
+service:
+  type: ClusterIP
+  httpPort: 9098
+  httpsPort: 9099
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: otc-cloudeye-exporter.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+livenessProbe:
+  httpGet:
+    path: /live
+    port: health
+  initialDelaySeconds: 30
+  periodSeconds: 30
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: health
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Persistent storage for logs
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 1Gi
+  mountPath: /app/logs
+
+# Configuration
+config:
+  app:
+    name: "otc-cloudeye-exporter"
+    version: "1.0.0"
+    
+  server:
+    metrics_port: 9098
+    health_port: 9099
+    host: "0.0.0.0"
+    read_timeout: "30s"
+    write_timeout: "30s"
+    idle_timeout: "60s"
+
+  logging:
+    level: "info"
+    format: "json"
+    output: "both"  # console for kubectl logs, file for persistence
+    file:
+      path: "/app/logs/app.log"
+      max_size: 104857600
+      max_backups: 10
+      max_age: 30
+      compress: true
+    console:
+      colors: false
+
+  metrics:
+    path: "/metrics"
+    namespace: "otc_cloudeye"
+    scrape_interval: "60s"
+    timeout: "30s"
+
+  health:
+    path: "/health"
+    ready_path: "/ready"
+    live_path: "/live"
+
+  otc:
+    default_region: "eu-de"
+    request_timeout: "30s"
+    max_retries: 3
+    retry_delay: "5s"
+
+# OpenTelekomCloud credentials (stored as secret)
+otcCredentials:
+  # These will be mounted as environment variables
+  # OS_AUTH_URL: ""
+  # OS_USERNAME: ""
+  # OS_PASSWORD: ""
+  # OS_PROJECT_NAME: ""
+  # OS_USER_DOMAIN_NAME: ""
+  existingSecret: ""  # Use existing secret instead
+
+# clouds.yml configuration
+cloudsConfig:
+  # Can be provided as configmap data or existing configmap
+  existingConfigMap: ""
+  data: |
+    clouds:
+      otc:
+        auth:
+          auth_url: "https://iam.eu-de.otc.t-systems.com:443/v3"
+          username: "${OS_USERNAME}"
+          password: "${OS_PASSWORD}"
+          project_name: "${OS_PROJECT_NAME}"
+          user_domain_name: "${OS_USER_DOMAIN_NAME}"
+        region_name: "eu-de"
+        interface: "public"

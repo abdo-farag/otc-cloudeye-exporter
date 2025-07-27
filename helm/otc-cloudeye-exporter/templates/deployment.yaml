@@ -1,0 +1,120 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "otc-cloudeye-exporter.fullname" . }}
+  labels:
+    {{- include "otc-cloudeye-exporter.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "otc-cloudeye-exporter.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "otc-cloudeye-exporter.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "otc-cloudeye-exporter.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --config=/app/config/config.yaml
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.config.server.metrics_port }}
+              protocol: TCP
+            - name: health
+              containerPort: {{ .Values.config.server.health_port }}
+              protocol: TCP
+          env:
+            - name: OS_AUTH_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "otc-cloudeye-exporter.secretName" . }}
+                  key: OS_AUTH_URL
+            - name: OS_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "otc-cloudeye-exporter.secretName" . }}
+                  key: OS_USERNAME
+            - name: OS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "otc-cloudeye-exporter.secretName" . }}
+                  key: OS_PASSWORD
+            - name: OS_PROJECT_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "otc-cloudeye-exporter.secretName" . }}
+                  key: OS_PROJECT_NAME
+            - name: OS_USER_DOMAIN_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "otc-cloudeye-exporter.secretName" . }}
+                  key: OS_USER_DOMAIN_NAME
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+            - name: clouds-config
+              mountPath: /app/clouds.yml
+              subPath: clouds.yml
+              readOnly: true
+            {{- if .Values.persistence.enabled }}
+            - name: logs
+              mountPath: {{ .Values.persistence.mountPath }}
+            {{- else }}
+            - name: logs-tmpfs
+              mountPath: /app/logs
+            {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "otc-cloudeye-exporter.fullname" . }}-config
+        - name: clouds-config
+          configMap:
+            name: {{ include "otc-cloudeye-exporter.fullname" . }}-clouds
+        {{- if .Values.persistence.enabled }}
+        - name: logs
+          persistentVolumeClaim:
+            claimName: {{ include "otc-cloudeye-exporter.fullname" . }}-logs
+        {{- else }}
+        - name: logs-tmpfs
+          emptyDir: {}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
