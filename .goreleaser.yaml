@@ -1,0 +1,26 @@
+project_name: otc-cloudeye-exporter
+
+builds:
+  - main: ./cmd/otc-cloudeye-exporter
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+
+archives:
+  - format: tar.gz
+    files:
+      - LICENSE
+      - README.md
+
+dockers:
+  - image_templates:
+      - ghcr.io/abdo-farag/otc-cloudeye-exporter:{{ .Tag }}
+      - ghcr.io/abdo-farag/otc-cloudeye-exporter:latest
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - --platform=linux/amd64,linux/arm64
+
+release:
+  github:
+    owner: abdo-farag
+    name: otc-cloudeye-exporter
+
