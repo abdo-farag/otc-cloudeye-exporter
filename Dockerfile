@@ -1,18 +1,24 @@
-# Build stage
+# syntax=docker/dockerfile:1.4
+
 FROM golang:1.24-alpine AS builder
 
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+
 WORKDIR /app
-COPY go.mod go.sum ./
+
+COPY go.* ./
 RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o otc-cloudeye-exporter ./cmd/otc_cloudeye_exporter
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w" -o otc-cloudeye-exporter ./cmd/otc-cloudeye-exporter
 
-# Final stage: Distroless (non-root)
+# Final stage
 FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /app
+
 COPY --from=builder /app/otc-cloudeye-exporter /app/
 COPY --from=builder /app/*.yml /app/
 

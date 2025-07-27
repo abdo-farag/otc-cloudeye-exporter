@@ -1,26 +1,58 @@
-project_name: otc-cloudeye-exporter
-
 builds:
   - main: ./cmd/otc-cloudeye-exporter
     goos: [linux, darwin, windows]
+    env: [CGO_ENABLED=0]
     goarch: [amd64, arm64]
-
-archives:
-  - format: tar.gz
-    files:
-      - LICENSE
-      - README.md
 
 dockers:
   - image_templates:
-      - ghcr.io/abdo-farag/otc-cloudeye-exporter:{{ .Tag }}
-      - ghcr.io/abdo-farag/otc-cloudeye-exporter:latest
+      - ghcr.io/abdo-farag/otc-cloudeye-exporter:{{ .Tag }}-amd64
+    use: buildx
     dockerfile: Dockerfile
+    goarch: amd64
     build_flag_templates:
-      - --platform=linux/amd64,linux/arm64
+      - "--platform=linux/amd64"
+      - "--build-arg=TARGETOS=linux"
+      - "--build-arg=TARGETARCH=amd64"
+    extra_files:
+      - go.mod
+      - go.sum
+      - clouds.yml
+      - endpoints.yml
+      - logs.yml
+      - cmd/
+      - internal/
 
-release:
-  github:
-    owner: abdo-farag
-    name: otc-cloudeye-exporter
+  - image_templates:
+      - ghcr.io/abdo-farag/otc-cloudeye-exporter:{{ .Tag }}-arm64
+    use: buildx
+    dockerfile: Dockerfile
+    goarch: arm64
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--build-arg=TARGETOS=linux"
+      - "--build-arg=TARGETARCH=arm64"
+    extra_files:
+      - go.mod
+      - go.sum
+      - clouds.yml
+      - endpoints.yml
+      - logs.yml
+      - cmd/
+      - internal/
 
+docker_manifests:
+  - name_template: ghcr.io/abdo-farag/otc-cloudeye-exporter:{{ .Tag }}
+    image_templates:
+      - ghcr.io/abdo-farag/otc-cloudeye-exporter:{{ .Tag }}-amd64
+      - ghcr.io/abdo-farag/otc-cloudeye-exporter:{{ .Tag }}-arm64
+
+  - name_template: ghcr.io/abdo-farag/otc-cloudeye-exporter:v{{ .Major }}
+    image_templates:
+      - ghcr.io/abdo-farag/otc-cloudeye-exporter:{{ .Tag }}-amd64
+      - ghcr.io/abdo-farag/otc-cloudeye-exporter:{{ .Tag }}-arm64
+
+  - name_template: ghcr.io/abdo-farag/otc-cloudeye-exporter:latest
+    image_templates:
+      - ghcr.io/abdo-farag/otc-cloudeye-exporter:{{ .Tag }}-amd64
+      - ghcr.io/abdo-farag/otc-cloudeye-exporter:{{ .Tag }}-arm64
