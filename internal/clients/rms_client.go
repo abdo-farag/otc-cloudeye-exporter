@@ -1,6 +1,7 @@
 package clients
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -8,10 +9,10 @@ import (
 	"time"
 
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/config"
+	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/core/auth/global"
 	rms "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/rms/v1"
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/services/rms/v1/model"
-	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
 )
 
 type cachedRmsEntry struct {
@@ -196,8 +197,18 @@ func structToStringMap(input interface{}) map[string]string {
 		value := v.Field(i)
 
 		if value.Kind() == reflect.Ptr && !value.IsNil() {
-			result[name] = fmt.Sprintf("%v", value.Elem().Interface())
-		} else if value.Kind() != reflect.Ptr {
+			value = value.Elem()
+		}
+
+		switch value.Kind() {
+		case reflect.Map, reflect.Struct, reflect.Slice:
+			jsonBytes, err := json.Marshal(value.Interface())
+			if err == nil {
+				result[name] = string(jsonBytes)
+			} else {
+				result[name] = fmt.Sprintf("%v", value.Interface())
+			}
+		default:
 			result[name] = fmt.Sprintf("%v", value.Interface())
 		}
 	}
@@ -221,4 +232,37 @@ func startRmsCacheCleaner() {
 			})
 		}
 	}()
+}
+
+// ListAllResources fetches all resources from RMS
+func (r *RmsClient) ListAllResources() ([]map[string]string, error) {
+	var results []map[string]string
+	limit := int32(200)
+	req := &model.ListAllResourcesRequest{
+		Limit: &limit,
+	}
+	for {
+		resp, err := r.client.ListAllResources(req)
+		if err != nil {
+			return nil, fmt.Errorf("RMS ListAllResources error: %w", err)
+		}
+		if resp.Resources != nil {
+			for _, res := range *resp.Resources {
+				info := structToStringMap(res)
+				// Add tags if needed
+				if res.Tags != nil {
+					for k, v := range res.Tags {
+						info["tag_"+k] = v
+					}
+				}
+				results = append(results, info)
+			}
+		}
+		// Paging
+		if resp.PageInfo == nil || resp.PageInfo.NextMarker == nil || *resp.PageInfo.NextMarker == "" {
+			break
+		}
+		req.Marker = resp.PageInfo.NextMarker
+	}
+	return results, nil
 }

@@ -48,13 +48,13 @@ type Global struct {
 	EndpointsConfPath           string `yaml:"endpoints_conf_path"`
 	IgnoreSSLVerify             bool   `yaml:"ignore_ssl_verify"`
 
-	HttpSchema string            `yaml:"proxy_schema"`
-	HttpHost   string            `yaml:"proxy_host"`
-	HttpPort   int               `yaml:"proxy_port"`
-	UserName   string            `yaml:"proxy_username"`
-	Password   string            `yaml:"proxy_password"`
+	HttpSchema string `yaml:"proxy_schema"`
+	HttpHost   string `yaml:"proxy_host"`
+	HttpPort   int    `yaml:"proxy_port"`
+	UserName   string `yaml:"proxy_username"`
+	Password   string `yaml:"proxy_password"`
 
-	ExportRMSLabels             map[string]bool `yaml:"export_rms_labels"`
+	ExportRMSLabels map[string]bool `yaml:"export_rms_labels"`
 }
 
 type Config struct {
@@ -88,10 +88,10 @@ func substituteEnvVars(val string) string {
 }
 
 func resolveAuthEnv(auth *CloudAuth) {
-	auth.DomainID   = substituteEnvVars(auth.DomainID)
+	auth.DomainID = substituteEnvVars(auth.DomainID)
 	auth.DomainName = substituteEnvVars(auth.DomainName)
-	auth.AccessKey  = substituteEnvVars(auth.AccessKey)
-	auth.SecretKey  = substituteEnvVars(auth.SecretKey)
+	auth.AccessKey = substituteEnvVars(auth.AccessKey)
+	auth.SecretKey = substituteEnvVars(auth.SecretKey)
 }
 
 // ---------- Load Config ----------
@@ -163,7 +163,6 @@ func resolveProjectIDs(auth *CloudAuth) error {
 
 	return nil
 }
-
 
 // ---------- Fetch All Projects ----------
 

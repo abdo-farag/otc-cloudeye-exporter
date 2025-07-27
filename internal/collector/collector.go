@@ -1,13 +1,13 @@
-package collectors
+package collector
 
 import (
 	"fmt"
 	"strings"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/abdo-farag/otc-cloudeye-exporter/internal/config"
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/clients"
+	"github.com/abdo-farag/otc-cloudeye-exporter/internal/config"
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // If MetricExport is in clients:

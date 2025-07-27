@@ -1,8 +1,8 @@
 package config
 
 import (
-	"github.com/huaweicloud/huaweicloud-sdk-go-v3/core/config"
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
+	"github.com/huaweicloud/huaweicloud-sdk-go-v3/core/config"
 )
 
 // GetHttpConfig builds an HTTP config with optional proxy support for RMS or any HuaweiCloud SDK client.

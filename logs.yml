@@ -1,6 +1,6 @@
 logging:
-  - level: "debug"
-    type: "FILE"
+  - type: "FILE"
+    level: "debug"
     file:
       enabled: false
       filename: "app.log"
@@ -10,8 +10,8 @@ logging:
       max_backups: 10
       max_age: 30
       compress: true
-  - level: "info"
-    type: "CONSOLE"
+  - type: "CONSOLE"
+    level: "info"
     console:
       enabled: true
       encoder: "CONSOLE"

@@ -2,11 +2,12 @@ package clients
 
 import (
 	"fmt"
+
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/config"
+	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
 	ces "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/ces/v1"
 	cesv2 "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/ces/v2"
 	evs "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/evs/v2"
-	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
 )
 
 type Clients struct {
@@ -28,7 +29,7 @@ func NewClientsWithEndpoints(cfg *config.Config, epCfg *config.EndpointConfig) (
 		logs.Errorf("SYS.CES endpoint not defined in endpoints.yml!")
 		return nil, fmt.Errorf("SYS.CES endpoint missing")
 	}
-	
+
 	rmsEndpoint, ok := epCfg.Services["SYS.RMS"]
 	if !ok {
 		logs.Errorf("SYS.RMS endpoint not defined in endpoints.yml!")

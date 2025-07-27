@@ -1,4 +1,4 @@
-package collectors
+package collector
 
 import (
 	"fmt"
@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/abdo-farag/otc-cloudeye-exporter/internal/config"
-	cesModel "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/ces/v1/model"
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/clients"
+	"github.com/abdo-farag/otc-cloudeye-exporter/internal/config"
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
+	cesModel "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/ces/v1/model"
 )
 
 // -----------------------------

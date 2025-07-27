@@ -2,9 +2,9 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"net/http"
 	"strings"
-	"fmt"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -39,13 +39,13 @@ func loadConfigs(globalConfigPath, endpointConfigPath string) (*config.Config, *
 
 // getServiceEndpoints builds a namespace->endpoint map.
 func getServiceEndpoints(parsedNamespaces []string, endpointCfg *config.EndpointConfig) map[string]string {
-    serviceEndpoints := make(map[string]string)
-    for key, url := range endpointCfg.Services {
-        // Replace {region} with actual region string!
-        endpoint := strings.ReplaceAll(url, "{region}", endpointCfg.Region)
-        serviceEndpoints[key] = endpoint
-    }
-    return serviceEndpoints
+	serviceEndpoints := make(map[string]string)
+	for key, url := range endpointCfg.Services {
+		// Replace {region} with actual region string!
+		endpoint := strings.ReplaceAll(url, "{region}", endpointCfg.Region)
+		serviceEndpoints[key] = endpoint
+	}
+	return serviceEndpoints
 }
 
 // validateProject checks if a project exists in the configured region
@@ -74,29 +74,28 @@ func validateProject(auth *config.CloudAuth, projectName string) error {
 
 // prometheusHandler handles the /metrics endpoint logic.
 func prometheusHandler(cfg *config.Config, projectClients []*clients.Clients, defaultNamespaces []string) http.HandlerFunc {
-    return func(w http.ResponseWriter, r *http.Request) {
-        var namespaces []string
-        if ns := r.URL.Query().Get("ns"); ns != "" {
-            namespaces = strings.Split(ns, ",")
-            logs.Infof("Requested namespaces: %v", namespaces)
-        } else {
-            namespaces = defaultNamespaces
-            logs.Infof("Using static namespaces: %v", namespaces)
-        }
+	return func(w http.ResponseWriter, r *http.Request) {
+		var namespaces []string
+		if ns := r.URL.Query().Get("ns"); ns != "" {
+			namespaces = strings.Split(ns, ",")
+			logs.Infof("Requested namespaces: %v", namespaces)
+		} else {
+			namespaces = defaultNamespaces
+			logs.Infof("Using static namespaces: %v", namespaces)
+		}
 
-        reg := prometheus.NewRegistry()
+		reg := prometheus.NewRegistry()
 
-        // Register your collectors for each client
-        for _, client := range projectClients {
-            collector := collectors.NewCloudEyeCollector(cfg, namespaces)
-            collector.AttachClient(client)
-            reg.MustRegister(collector)
-        }
+		// Register your collectors for each client
+		for _, client := range projectClients {
+			collector := collector.NewCloudEyeCollector(cfg, namespaces)
+			collector.AttachClient(client)
+			reg.MustRegister(collector)
+		}
 
-        promhttp.HandlerFor(reg, promhttp.HandlerOpts{}).ServeHTTP(w, r)
-    }
+		promhttp.HandlerFor(reg, promhttp.HandlerOpts{}).ServeHTTP(w, r)
+	}
 }
-
 
 func main() {
 	// --- Step 0: Initialize logging ---
@@ -160,7 +159,7 @@ func main() {
 		}
 		logs.Info("All clients closed.")
 	}()
-	
+
 	srvCfg := server.Config{
 		EnableHTTPS: cfg.Global.EnableHTTPS,
 		HTTPPort:    cfg.Global.Port,
