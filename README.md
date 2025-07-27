@@ -215,6 +215,31 @@ scrape_configs:
       ns: ['SYS.ECS,SYS.EVS,SYS.RDS']
 ```
 
+### Grafana Alloy Configuration
+```
+prometheus.remote_write "mimir" {
+  endpoint {
+    url = "http://mimir:9009/api/v1/push"
+  }
+}
+
+prometheus.scrape "cloudeye_exporter" {
+  targets = [
+    { __address__ = "<otc_cloudeye_exporter>:9098" },
+  ]
+
+  metrics_path    = "/metrics"
+  scrape_interval = "10s"
+  job_name        = "otc_cloudeye_exporter"
+
+  params = {
+    ns = ["SYS.ECS,SYS.VPC,SYS.ELB"],
+  }
+
+  forward_to = [prometheus.remote_write.mimir.receiver]
+}
+```
+
 ### Grafana Dashboard
 
 Import metrics using the standard Prometheus data source. Key metric patterns:
