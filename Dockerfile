@@ -26,4 +26,5 @@ USER nonroot
 
 EXPOSE 9098 9099
 
-ENTRYPOINT ["/app/otc-cloudeye-exporter", "-config", "/app/clouds.yml"]
+ENTRYPOINT ["/app/otc-cloudeye-exporter"]
+CMD ["-config", "/app/clouds.yml"]

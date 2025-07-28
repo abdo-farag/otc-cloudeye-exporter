@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
 	"go.uber.org/zap"
@@ -193,11 +194,47 @@ func (zap *LoggerConstructor) Errorf(template string, args ...interface{}) {
 func (zap *LoggerConstructor) Fatalf(template string, args ...interface{}) {
 	zap.LogInstance.Fatalf(clearLineBreaks(template, args...))
 }
+
+// Enhanced Flush method with better error handling
 func (zap *LoggerConstructor) Flush() {
 	err := zap.LogInstance.Sync()
-	if err != nil && !strings.Contains(err.Error(), "invalid argument") {
+	if err != nil && !isSyncErrorIgnorable(err) {
 		fmt.Printf("Fail to sync logs, error: %s\n", err.Error())
 	}
+}
+
+// isSyncErrorIgnorable checks if the sync error can be safely ignored
+func isSyncErrorIgnorable(err error) bool {
+	errStr := err.Error()
+	
+	// Common ignorable errors
+	ignorablePatterns := []string{
+		"invalid argument",
+		"inappropriate ioctl for device",
+		"operation not supported",
+		"bad file descriptor",
+	}
+	
+	for _, pattern := range ignorablePatterns {
+		if strings.Contains(errStr, pattern) {
+			return true
+		}
+	}
+	
+	// Check for specific errno values that are safe to ignore
+	if pathErr, ok := err.(*os.PathError); ok {
+		if errno, ok := pathErr.Err.(syscall.Errno); ok {
+			switch errno {
+			case syscall.ENOTTY, // inappropriate ioctl for device
+				 syscall.EINVAL,  // invalid argument
+				 syscall.ENOTSUP, // operation not supported
+				 syscall.EBADF:   // bad file descriptor
+				return true
+			}
+		}
+	}
+	
+	return false
 }
 
 // For graceful shutdown:
@@ -268,6 +305,15 @@ func makeEncoder(encoderType, timeFormat string) zapcore.Encoder {
 	return zapcore.NewConsoleEncoder(encoderConfig)
 }
 
+// NoSyncWriteSyncer wraps a WriteSyncer and makes Sync() a no-op
+type NoSyncWriteSyncer struct {
+	zapcore.WriteSyncer
+}
+
+func (w NoSyncWriteSyncer) Sync() error {
+	return nil // Always return nil, skip actual sync
+}
+
 func makeZapCore(c *Config) zapcore.Core {
 	var encoder zapcore.Encoder
 	var w zapcore.WriteSyncer
@@ -291,7 +337,8 @@ func makeZapCore(c *Config) zapcore.Core {
 			return nil
 		}
 		encoder = makeEncoder(c.Console.Encoder, c.Console.TimeFormat)
-		w = zapcore.AddSync(os.Stdout)
+		// Wrap stdout with NoSyncWriteSyncer to avoid sync errors
+		w = NoSyncWriteSyncer{zapcore.AddSync(os.Stdout)}
 		return zapcore.NewCore(encoder, w, zapcore.Level(c.Level))
 	default:
 		panic(fmt.Sprintf("unknown logging type: %s", c.Type))
@@ -307,10 +354,10 @@ func makeZapLogger(cfg []Config) *zap.Logger {
 		}
 	}
 	if len(cores) == 0 {
-		// Default fallback core: console/info
+		// Default fallback core: console/info with NoSyncWriteSyncer
 		core := zapcore.NewCore(
 			makeEncoder("CONSOLE", "02.01.2006 15:04:05"),
-			zapcore.AddSync(os.Stdout),
+			NoSyncWriteSyncer{zapcore.AddSync(os.Stdout)},
 			zapcore.InfoLevel,
 		)
 		return zap.New(core, zap.AddCaller())
