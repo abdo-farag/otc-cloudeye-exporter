@@ -3,3 +3,4 @@
 log/**
 otc-cloudeye-exporter
 build/**
+dist/**
