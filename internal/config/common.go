@@ -8,28 +8,23 @@ import (
 // GetHttpConfig builds an HTTP config with optional proxy support for RMS or any HuaweiCloud SDK client.
 func GetHttpConfig() *config.HttpConfig {
 	httpConfig := config.DefaultHttpConfig()
-
 	if !isProxyConfigured() {
 		logs.Debugf("Proxy not configured; using direct connection.")
 		return httpConfig
 	}
-
 	proxy := config.Proxy{
 		Schema: AppConfig.Global.HttpSchema,
 		Host:   AppConfig.Global.HttpHost,
 		Port:   AppConfig.Global.HttpPort,
 	}
-
 	if isProxyAuthConfigured() {
 		proxy.Username = AppConfig.Global.UserName
 		proxy.Password = AppConfig.Global.Password
 	} else {
 		logs.Debugf("Proxy authentication not configured; using proxy without auth.")
 	}
-
 	httpConfig.HttpProxy = &proxy
 	httpConfig.IgnoreSSLVerification = AppConfig.Global.IgnoreSSLVerify
-
 	return httpConfig
 }
 

@@ -2,96 +2,126 @@ package clients
 
 import (
 	"fmt"
-	"sync"
-	"time"
-
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/config"
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
 	obs "github.com/huaweicloud/huaweicloud-sdk-go-obs/obs"
+	"sync"
+	"time"
 )
 
+// =============== CACHE ======================
+
 type cachedObsEntry struct {
-	tags      map[string]string
+	data      map[string]string
 	timestamp time.Time
 }
 
-var (
-	obsTagCache     sync.Map
-	obsTagCacheTTL  = 15 * time.Minute
-	obsCacheCleaner sync.Once
+const (
+	obsCacheTTL       = 15 * time.Minute
+	obsCacheCleanTime = 30 * time.Minute
 )
+
+type obsCacheType struct {
+	m sync.Map
+}
+
+func (c *obsCacheType) Get(key string) (map[string]string, bool) {
+	val, ok := c.m.Load(key)
+	if !ok {
+		return nil, false
+	}
+	entry, ok := val.(cachedObsEntry)
+	if !ok || time.Since(entry.timestamp) > obsCacheTTL {
+		c.m.Delete(key)
+		return nil, false
+	}
+	return entry.data, true
+}
+
+func (c *obsCacheType) Set(key string, data map[string]string) {
+	c.m.Store(key, cachedObsEntry{
+		data:      data,
+		timestamp: time.Now(),
+	})
+}
+
+func (c *obsCacheType) Clean() {
+	now := time.Now()
+	c.m.Range(func(key, val any) bool {
+		if entry, ok := val.(cachedObsEntry); ok {
+			if now.Sub(entry.timestamp) > obsCacheTTL {
+				logs.Debugf("Evicting expired OBS cache entry: %s", key)
+				c.m.Delete(key)
+			}
+		}
+		return true
+	})
+}
+
+var (
+	obsCache = &obsCacheType{}
+)
+
+// Starts the background cache cleaner only once
+func startObsCacheCleaner() {
+	ticker := time.NewTicker(obsCacheCleanTime)
+	go func() {
+		for range ticker.C {
+			obsCache.Clean()
+		}
+	}()
+}
+
+// =============== CLIENT ======================
 
 type ObsClient struct {
 	client *obs.ObsClient
 }
 
-// NewObsClient initializes an OBS client
-func NewObsClient(cfg *config.Config, endpoint string) (*ObsClient, error) {
+// InitObsClient initializes an OBS client
+func InitObsClient(cfg *config.Config, endpoint string) (*ObsClient, error) {
 	logs.Infof("Initializing OBS client for endpoint: %s", endpoint)
 	obsClient, err := obs.New(cfg.Auth.AccessKey, cfg.Auth.SecretKey, endpoint)
 	if err != nil {
-		logs.Errorf("Failed to create OBS client for endpoint %s: %v", endpoint, err)
 		return nil, fmt.Errorf("failed to create OBS client: %w", err)
 	}
-
 	// Start cache cleaner only once
-	obsCacheCleaner.Do(startObsTagCacheCleaner)
-	logs.Infof("OBS client initialized successfully for endpoint: %s", endpoint)
-
+	cacheCleaner.Do(startObsCacheCleaner)
+	logs.Infof("OBS client initialized for endpoint: %s", endpoint)
 	return &ObsClient{client: obsClient}, nil
 }
 
 // GetBucketTags fetches and caches bucket tags
 func (o *ObsClient) GetBucketTags(bucketName string) (map[string]string, error) {
 	if bucketName == "" {
-		logs.Warnf("GetBucketTags called with empty bucket name")
 		return nil, fmt.Errorf("bucket name cannot be empty")
 	}
-
-	cacheKey := "bucket:" + bucketName
-
+	cacheKey := "tags:" + bucketName
 	// Check cache first
-	if entry, ok := obsTagCache.Load(cacheKey); ok {
-		if cached, ok := entry.(cachedObsEntry); ok {
-			if time.Since(cached.timestamp) < obsTagCacheTTL {
-				logs.Debugf("OBS bucket tag cache hit for %s", bucketName)
-				return cached.tags, nil
-			}
-		}
+	if data, ok := obsCache.Get(cacheKey); ok {
+		logs.Debugf("OBS bucket tag cache hit for %s", bucketName)
+		return data, nil
 	}
-
 	logs.Debugf("OBS bucket tag cache miss for %s, querying API", bucketName)
-
 	output, err := o.client.GetBucketTagging(bucketName)
 	if err != nil {
-		// If bucket has no tags, OBS returns an error - this is normal
+		// No tags is normal
 		if obsErr, ok := err.(obs.ObsError); ok {
 			if obsErr.Code == "NoSuchTagSet" || obsErr.StatusCode == 404 {
-				logs.Infof("Bucket %s has no tags (NoSuchTagSet/404)", bucketName)
-				obsTagCache.Store(cacheKey, cachedObsEntry{
-					tags:      make(map[string]string),
-					timestamp: time.Now(),
-				})
-				return make(map[string]string), nil
+				logs.Infof("Bucket %s has no tags", bucketName)
+				obsCache.Set(cacheKey, map[string]string{})
+				return map[string]string{}, nil
 			}
 		}
-		logs.Errorf("Failed to get bucket tags for %s: %v", bucketName, err)
 		return nil, fmt.Errorf("failed to get bucket tags for %s: %w", bucketName, err)
 	}
-
-	// Convert tags to map
 	tags := make(map[string]string)
 	for _, tag := range output.Tags {
 		if tag.Key != "" {
 			tags[tag.Key] = tag.Value
 		}
 	}
-
-	obsTagCache.Store(cacheKey, cachedObsEntry{
-		tags:      tags,
-		timestamp: time.Now(),
-	})
-
+	obsCache.Set(cacheKey, tags)
 	logs.Infof("Fetched and cached %d tags for bucket %s", len(tags), bucketName)
 	return tags, nil
 }
@@ -99,40 +129,24 @@ func (o *ObsClient) GetBucketTags(bucketName string) (map[string]string, error) 
 // GetBucketInfo fetches bucket location and other metadata
 func (o *ObsClient) GetBucketInfo(bucketName string) (map[string]string, error) {
 	if bucketName == "" {
-		logs.Warnf("GetBucketInfo called with empty bucket name")
 		return nil, fmt.Errorf("bucket name cannot be empty")
 	}
-
 	cacheKey := "info:" + bucketName
-
 	// Check cache first
-	if entry, ok := obsTagCache.Load(cacheKey); ok {
-		if cached, ok := entry.(cachedObsEntry); ok {
-			if time.Since(cached.timestamp) < obsTagCacheTTL {
-				logs.Debugf("OBS bucket info cache hit for %s", bucketName)
-				return cached.tags, nil
-			}
-		}
+	if data, ok := obsCache.Get(cacheKey); ok {
+		logs.Debugf("OBS bucket info cache hit for %s", bucketName)
+		return data, nil
 	}
-
 	logs.Debugf("OBS bucket info cache miss for %s, querying API", bucketName)
-
 	locationOutput, err := o.client.GetBucketLocation(bucketName)
 	if err != nil {
-		logs.Errorf("Failed to get bucket location for %s: %v", bucketName, err)
 		return nil, fmt.Errorf("failed to get bucket location for %s: %w", bucketName, err)
 	}
-
 	info := map[string]string{
 		"bucket_name": bucketName,
 		"location":    locationOutput.Location,
 	}
-
-	obsTagCache.Store(cacheKey, cachedObsEntry{
-		tags:      info,
-		timestamp: time.Now(),
-	})
-
+	obsCache.Set(cacheKey, info)
 	logs.Infof("Fetched and cached location info for bucket %s", bucketName)
 	return info, nil
 }
@@ -143,23 +157,4 @@ func (o *ObsClient) Close() {
 		logs.Infof("Closing OBS client")
 		o.client.Close()
 	}
-}
-
-// startObsTagCacheCleaner runs periodically to evict old entries
-func startObsTagCacheCleaner() {
-	ticker := time.NewTicker(30 * time.Minute)
-	go func() {
-		for range ticker.C {
-			now := time.Now()
-			obsTagCache.Range(func(key, val any) bool {
-				if entry, ok := val.(cachedObsEntry); ok {
-					if now.Sub(entry.timestamp) > obsTagCacheTTL {
-						logs.Debugf("Evicting expired OBS cache entry: %s", key)
-						obsTagCache.Delete(key)
-					}
-				}
-				return true
-			})
-		}
-	}()
 }

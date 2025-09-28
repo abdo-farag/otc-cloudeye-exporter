@@ -3,16 +3,15 @@ package clients
 import (
 	"encoding/json"
 	"fmt"
-	"reflect"
-	"strings"
-	"sync"
-	"time"
-
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/config"
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/core/auth/global"
 	rms "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/rms/v1"
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/services/rms/v1/model"
+	"reflect"
+	"strings"
+	"sync"
+	"time"
 )
 
 type cachedRmsEntry struct {
@@ -20,227 +19,209 @@ type cachedRmsEntry struct {
 	timestamp time.Time
 }
 
-var (
-	rmsCache     sync.Map
-	rmsCacheTTL  = 15 * time.Minute
-	cacheCleaner sync.Once
+const (
+	rmsCacheTTL       = 15 * time.Minute
+	rmsCacheCleanTime = 30 * time.Minute
 )
+
+type rmsCacheType struct {
+	m sync.Map
+}
+
+func (c *rmsCacheType) Get(key string) (map[string]string, bool) {
+	val, ok := c.m.Load(key)
+	if !ok {
+		return nil, false
+	}
+	entry, ok := val.(cachedRmsEntry)
+	if !ok || time.Since(entry.timestamp) > rmsCacheTTL {
+		c.m.Delete(key)
+		return nil, false
+	}
+	return entry.data, true
+}
+
+func (c *rmsCacheType) Set(key string, data map[string]string) {
+	c.m.Store(key, cachedRmsEntry{
+		data:      data,
+		timestamp: time.Now(),
+	})
+}
+
+func (c *rmsCacheType) Clean() {
+	now := time.Now()
+	c.m.Range(func(key, val any) bool {
+		if entry, ok := val.(cachedRmsEntry); ok {
+			if now.Sub(entry.timestamp) > rmsCacheTTL {
+				c.m.Delete(key)
+				logs.Infof("Evicted cached RMS entry: %s", key)
+			}
+		}
+		return true
+	})
+}
+
+var (
+	rmsCache = &rmsCacheType{}
+)
+
+func startRmsCacheCleaner() {
+	ticker := time.NewTicker(rmsCacheCleanTime)
+	go func() {
+		for range ticker.C {
+			rmsCache.Clean()
+		}
+	}()
+}
 
 type RmsClient struct {
 	client *rms.RmsClient
 }
 
-// NewRmsClient initializes an RMS client
-func InitRmsClient(cfg *config.Config, endpoint string, region string) (*RmsClient, error) {
+func InitRmsClient(cfg *config.Config, endpoint, region string) (*RmsClient, error) {
 	logs.Infof("Initializing RMS client for region: %s, endpoint: %s", region, endpoint)
-
 	auth, err := global.NewCredentialsBuilder().
 		WithAk(cfg.Auth.AccessKey).
 		WithSk(cfg.Auth.SecretKey).
 		WithDomainId(cfg.Auth.DomainID).
 		SafeBuild()
 	if err != nil {
-		logs.Errorf("Failed to build credentials for RMS client: %v", err)
 		return nil, fmt.Errorf("failed to build credentials: %w", err)
 	}
-
 	hcClient, err := rms.RmsClientBuilder().
 		WithEndpoints([]string{endpoint}).
 		WithCredential(auth).
 		WithHttpConfig(config.GetHttpConfig().WithIgnoreSSLVerification(cfg.Global.IgnoreSSLVerify)).
 		SafeBuild()
 	if err != nil {
-		logs.Errorf("Failed to build RMS client for region %s: %v", region, err)
 		return nil, fmt.Errorf("failed to build RMS client: %w", err)
 	}
-
-	client := rms.NewRmsClient(hcClient)
-
-	// Start cleaner only once
 	cacheCleaner.Do(startRmsCacheCleaner)
-
-	logs.Infof("RMS client initialized successfully for region: %s", region)
-
-	return &RmsClient{client: client}, nil
+	logs.Infof("RMS client initialized for region: %s", region)
+	return &RmsClient{client: rms.NewRmsClient(hcClient)}, nil
 }
 
-// GetResourceByID fetches and caches metadata about a resource
-func (r *RmsClient) GetResourceByID(resourceID string, resourceName string) (map[string]string, error) {
-	// Determine cache key based on what we're searching for
-	var cacheKey string
-	if resourceID != "" {
-		cacheKey = "id:" + resourceID
-	} else if resourceName != "" {
-		cacheKey = "name:" + resourceName
-	} else {
-		logs.Warnf("Either resourceID or resourceName must be provided")
+// GetResourceByID fetches resource metadata, using cache when possible.
+func (r *RmsClient) GetResourceByID(resourceID, resourceName string) (map[string]string, error) {
+	cacheKey := buildCacheKey(resourceID, resourceName)
+	if cacheKey == "" {
 		return nil, fmt.Errorf("either resourceID or resourceName must be provided")
 	}
-
-	// Check cache first
-	if entry, ok := rmsCache.Load(cacheKey); ok {
-		if cached, ok := entry.(cachedRmsEntry); ok {
-			if time.Since(cached.timestamp) < rmsCacheTTL {
-				logs.Debugf("Cache hit for resource: %s", cacheKey)
-				return cached.data, nil
-			}
-		}
+	// Try cache first
+	if data, ok := rmsCache.Get(cacheKey); ok {
+		logs.Debugf("Cache hit for resource: %s", cacheKey)
+		return data, nil
 	}
+	logs.Debugf("Cache miss for resource: %s", cacheKey)
+	resource, err := r.lookupResource(resourceID, resourceName)
+	if err != nil {
+		return nil, err
+	}
+	// Cache with all possible keys for quick lookup next time
+	cacheResource(resource, cacheKey)
+	return resource, nil
+}
 
-	logs.Debugf("Cache miss for resource: %s, fetching from RMS", cacheKey)
-
+func (r *RmsClient) lookupResource(resourceID, resourceName string) (map[string]string, error) {
 	limit := int32(200)
-	req := &model.ListAllResourcesRequest{
-		Limit: &limit,
-	}
-
-	// Set search parameters
+	req := &model.ListAllResourcesRequest{Limit: &limit}
 	if resourceID != "" {
 		req.Id = &resourceID
 	}
 	if resourceName != "" {
 		req.Name = &resourceName
 	}
-
 	for {
 		resp, err := r.client.ListAllResources(req)
 		if err != nil {
-			searchTerm := resourceID
-			if searchTerm == "" {
-				searchTerm = resourceName
-			}
-			logs.Errorf("RMS lookup failed for %s: %v", searchTerm, err)
-			return nil, fmt.Errorf("RMS lookup failed for %s: %w", searchTerm, err)
+			return nil, fmt.Errorf("RMS lookup failed for %s: %w", resourceID+resourceName, err)
 		}
-
 		if resp.Resources == nil || len(*resp.Resources) == 0 {
-			logs.Infof("No resources found for %s", cacheKey)
 			break
 		}
-
 		for _, res := range *resp.Resources {
-			// Check if this matches what we're looking for
-			var isMatch bool
-			if resourceID != "" && res.Id != nil && *res.Id == resourceID {
-				isMatch = true
-			} else if resourceName != "" && res.Name != nil && *res.Name == resourceName {
-				isMatch = true
-			}
-
-			if isMatch {
+			if matchesResource(&res, resourceID, resourceName) {
 				info := structToStringMap(res)
-
-				// Add tags
-				if res.Tags != nil {
-					for k, v := range res.Tags {
-						info["tag_"+k] = v
-					}
-				}
-
-				// Cache with the original search key
-				rmsCache.Store(cacheKey, cachedRmsEntry{
-					data:      info,
-					timestamp: time.Now(),
-				})
-
-				// Also cache with both ID and name if available for future lookups
-				if res.Id != nil && *res.Id != "" {
-					idKey := "id:" + *res.Id
-					if idKey != cacheKey {
-						rmsCache.Store(idKey, cachedRmsEntry{
-							data:      info,
-							timestamp: time.Now(),
-						})
-					}
-				}
-				if res.Name != nil && *res.Name != "" {
-					nameKey := "name:" + *res.Name
-					if nameKey != cacheKey {
-						rmsCache.Store(nameKey, cachedRmsEntry{
-							data:      info,
-							timestamp: time.Now(),
-						})
-					}
-				}
-
-				logs.Infof("Resource found and cached: %s", cacheKey)
+				mergeTags(info, res.Tags)
 				return info, nil
 			}
 		}
-
-		if resp.PageInfo == nil || resp.PageInfo.NextMarker == nil {
+		if resp.PageInfo == nil || resp.PageInfo.NextMarker == nil || *resp.PageInfo.NextMarker == "" {
 			break
 		}
 		req.Marker = resp.PageInfo.NextMarker
 	}
-
-	searchTerm := resourceID
-	if searchTerm == "" {
-		searchTerm = resourceName
-	}
-	logs.Errorf("Resource %s not found", searchTerm)
-	return nil, fmt.Errorf("resource %s not found", searchTerm)
+	return nil, fmt.Errorf("resource %s not found", resourceID+resourceName)
 }
 
-// structToStringMap converts any struct to a map[string]string
+func matchesResource(res *model.ResourceEntity, resourceID, resourceName string) bool {
+	if resourceID != "" && res.Id != nil && *res.Id == resourceID {
+		return true
+	}
+	if resourceName != "" && res.Name != nil && *res.Name == resourceName {
+		return true
+	}
+	return false
+}
+
+// ================== UTILS ===================
+func buildCacheKey(resourceID, resourceName string) string {
+	if resourceID != "" {
+		return "id:" + resourceID
+	}
+	if resourceName != "" {
+		return "name:" + resourceName
+	}
+	return ""
+}
+
+func cacheResource(info map[string]string, cacheKey string) {
+	rmsCache.Set(cacheKey, info)
+	if id, ok := info["id"]; ok && id != "" && cacheKey != "id:"+id {
+		rmsCache.Set("id:"+id, info)
+	}
+	if name, ok := info["name"]; ok && name != "" && cacheKey != "name:"+name {
+		rmsCache.Set("name:"+name, info)
+	}
+}
+
+// structToStringMap converts struct to map[string]string via JSON (preferable if all fields are tagged).
 func structToStringMap(input interface{}) map[string]string {
-	result := make(map[string]string)
+	out := make(map[string]string)
+	// Use JSON as primary
+	b, err := json.Marshal(input)
+	if err == nil {
+		json.Unmarshal(b, &out)
+	}
+	// Fallback: reflect for missing fields (rare)
 	v := reflect.ValueOf(input)
 	if v.Kind() == reflect.Ptr {
 		v = v.Elem()
 	}
 	t := v.Type()
-
 	for i := 0; i < v.NumField(); i++ {
 		field := t.Field(i)
 		name := strings.ToLower(field.Name)
-		value := v.Field(i)
-
-		if value.Kind() == reflect.Ptr && !value.IsNil() {
-			value = value.Elem()
-		}
-
-		switch value.Kind() {
-		case reflect.Map, reflect.Struct, reflect.Slice:
-			jsonBytes, err := json.Marshal(value.Interface())
-			if err == nil {
-				result[name] = string(jsonBytes)
-			} else {
-				result[name] = fmt.Sprintf("%v", value.Interface())
-			}
-		default:
-			result[name] = fmt.Sprintf("%v", value.Interface())
+		if _, ok := out[name]; !ok {
+			val := v.Field(i)
+			out[name] = fmt.Sprintf("%v", val.Interface())
 		}
 	}
-	return result
+	return out
 }
 
-// startRmsCacheCleaner runs periodically to evict old entries
-func startRmsCacheCleaner() {
-	ticker := time.NewTicker(30 * time.Minute)
-	go func() {
-		for range ticker.C {
-			now := time.Now()
-			rmsCache.Range(func(key, val any) bool {
-				if entry, ok := val.(cachedRmsEntry); ok {
-					if now.Sub(entry.timestamp) > rmsCacheTTL {
-						rmsCache.Delete(key)
-						logs.Infof("Evicted cached RMS entry: %s", key)
-					}
-				}
-				return true
-			})
-		}
-	}()
+// mergeTags merges tag map into info map with prefix
+func mergeTags(info map[string]string, tags map[string]string) {
+	for k, v := range tags {
+		info["tag_"+k] = v
+	}
 }
 
-// ListAllResources fetches all resources from RMS
+// ListAllResources fetches all resources from RMS.
 func (r *RmsClient) ListAllResources() ([]map[string]string, error) {
 	var results []map[string]string
 	limit := int32(200)
-	req := &model.ListAllResourcesRequest{
-		Limit: &limit,
-	}
+	req := &model.ListAllResourcesRequest{Limit: &limit}
 	for {
 		resp, err := r.client.ListAllResources(req)
 		if err != nil {
@@ -249,16 +230,10 @@ func (r *RmsClient) ListAllResources() ([]map[string]string, error) {
 		if resp.Resources != nil {
 			for _, res := range *resp.Resources {
 				info := structToStringMap(res)
-				// Add tags if needed
-				if res.Tags != nil {
-					for k, v := range res.Tags {
-						info["tag_"+k] = v
-					}
-				}
+				mergeTags(info, res.Tags)
 				results = append(results, info)
 			}
 		}
-		// Paging
 		if resp.PageInfo == nil || resp.PageInfo.NextMarker == nil || *resp.PageInfo.NextMarker == "" {
 			break
 		}

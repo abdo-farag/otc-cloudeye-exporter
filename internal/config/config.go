@@ -7,14 +7,12 @@ import (
 	"regexp"
 	"strings"
 
-	"gopkg.in/yaml.v2"
-
+	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/core/auth/global"
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/core/sdkerr"
 	iam "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/iam/v3"
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/services/iam/v3/model"
-
-	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
+	"gopkg.in/yaml.v2"
 )
 
 // ---------- Struct Definitions ----------
@@ -35,26 +33,29 @@ type CloudAuth struct {
 }
 
 type Global struct {
-	Port                        string `yaml:"port"`
-	EnableHTTPS                 bool   `yaml:"enable_https"`
-	HTTPSPort                   string `yaml:"https_port"`
-	TLSCert                     string `yaml:"tls_cert"`
-	TLSKey                      string `yaml:"tls_key"`
-	MetricPath                  string `yaml:"metric_path"`
-	ScrapeBatchSize             int    `yaml:"scrape_batch_size"`
-	ResourceSyncIntervalMinutes int    `yaml:"resource_sync_interval_minutes"`
-	RmsRetryTimes               int    `yaml:"rms_retry_times"`
-	Namespaces                  string `yaml:"namespaces"`
-	EndpointsConfPath           string `yaml:"endpoints_conf_path"`
-	IgnoreSSLVerify             bool   `yaml:"ignore_ssl_verify"`
-
-	HttpSchema string `yaml:"proxy_schema"`
-	HttpHost   string `yaml:"proxy_host"`
-	HttpPort   int    `yaml:"proxy_port"`
-	UserName   string `yaml:"proxy_username"`
-	Password   string `yaml:"proxy_password"`
-
-	ExportRMSLabels map[string]bool `yaml:"export_rms_labels"`
+	Port                        string          `yaml:"port"`
+	EnableHTTPS                 bool            `yaml:"enable_https"`
+	HTTPSPort                   string          `yaml:"https_port"`
+	TLSCert                     string          `yaml:"tls_cert"`
+	TLSKey                      string          `yaml:"tls_key"`
+	MetricPath                  string          `yaml:"metric_path"`
+	Namespaces                  string          `yaml:"namespaces"`
+	EndpointsConfPath           string          `yaml:"endpoints_conf_path"`
+	LogsConfPath                string          `yaml:"logs_conf_path"`
+	IgnoreSSLVerify             bool            `yaml:"ignore_ssl_verify"`
+	HttpSchema                  string          `yaml:"proxy_schema"`
+	HttpHost                    string          `yaml:"proxy_host"`
+	HttpPort                    int             `yaml:"proxy_port"`
+	UserName                    string          `yaml:"proxy_username"`
+	Password                    string          `yaml:"proxy_password"`
+	ExportRMSLabels             map[string]bool `yaml:"export_rms_labels"`
+	APIMaxRetries               int             `yaml:"api_max_retries"`
+	APIRetryInitialDelaySeconds int             `yaml:"api_retry_initial_delay_seconds"`
+	APIRetryMaxDelaySeconds     int             `yaml:"api_retry_max_delay_seconds"`
+	APIRetryBackoffMultiplier   float64         `yaml:"api_retry_backoff_multiplier"`
+	MetricQueryPeriodMinutes    int             `yaml:"metric_query_period_minutes"`
+	MetricQueryPageLimit        int             `yaml:"metric_query_page_limit"`
+	MetricQueryWindowMs         int             `yaml:"metric_query_window_ms"`
 }
 
 type Config struct {
@@ -70,7 +71,6 @@ type ProjectInfo struct {
 var AppConfig *Config
 
 // ---------- Substitute Environment Variables in Auth Fields ----------
-
 func substituteEnvVars(val string) string {
 	re := regexp.MustCompile(`^\$\{(\w+)\}$`)
 	if m := re.FindStringSubmatch(val); len(m) == 2 {
@@ -78,7 +78,7 @@ func substituteEnvVars(val string) string {
 			return v
 		}
 	}
-	// Optionally: fallback for "OS_VARNAME" (if you want to support it without ${...})
+	// Optionally: fallback for "OS_VARNAME"
 	if strings.HasPrefix(val, "OS_") && strings.ToUpper(val) == val {
 		if v := os.Getenv(val); v != "" {
 			return v
@@ -95,27 +95,22 @@ func resolveAuthEnv(auth *CloudAuth) {
 }
 
 // ---------- Load Config ----------
-
 func LoadConfig(path string) (*Config, error) {
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
 	logs.Infof("✅ Loaded config from %s", path)
-
 	// Substitute env vars in Auth fields if present
 	resolveAuthEnv(&cfg.Auth)
-
 	// Fill project IDs if missing
 	if err := resolveProjectIDs(&cfg.Auth); err != nil {
 		return nil, fmt.Errorf("resolving project IDs failed: %w", err)
 	}
-
 	AppConfig = &cfg
 	return AppConfig, nil
 }
@@ -126,20 +121,16 @@ func resolveProjectIDs(auth *CloudAuth) error {
 	if err != nil {
 		return err
 	}
-
 	regionPrefix := auth.Region + "_" // e.g. "eu-de_"
 	projectMap := make(map[string]string)
-
 	// Log the fetched projects for debugging
 	logs.Infof("Fetched projects: %v", allProjects)
-
 	// Filter and map only matching projects
 	for _, p := range allProjects {
 		if p.Name == auth.Region || strings.HasPrefix(p.Name, regionPrefix) {
 			projectMap[p.Name] = p.ID
 		}
 	}
-
 	// If no projects specified, use all matching the region
 	if len(auth.Projects) == 0 {
 		for name, id := range projectMap {
@@ -153,19 +144,16 @@ func resolveProjectIDs(auth *CloudAuth) error {
 					auth.Projects[i].ID = id
 					logs.Infof("ℹ️ Resolved project %s to ID %s", proj.Name, id)
 				} else {
-					// Log the error but do not stop the program, continue with other projects
+					// Log error but continue with other projects
 					logs.Warnf("⚠️ Project %s not found for region %s, skipping.", proj.Name, auth.Region)
-					// Instead of returning an error, we just log it and continue
 				}
 			}
 		}
 	}
-
 	return nil
 }
 
 // ---------- Fetch All Projects ----------
-
 func FetchAllProjects(auth CloudAuth) ([]ProjectInfo, error) {
 	creds, err := global.NewCredentialsBuilder().
 		WithAk(auth.AccessKey).
@@ -175,19 +163,15 @@ func FetchAllProjects(auth CloudAuth) ([]ProjectInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to build credentials: %w", err)
 	}
-
 	iamEndpoint := auth.AuthURL
 	if iamEndpoint == "" {
 		iamEndpoint = fmt.Sprintf("https://iam.%s.otc.t-systems.com", auth.Region)
 	}
-
 	hc, _ := iam.IamClientBuilder().
 		WithEndpoints([]string{iamEndpoint}).
 		WithCredential(creds).
 		SafeBuild()
-
 	client := iam.NewIamClient(hc)
-
 	req := &model.KeystoneListProjectsRequest{}
 	resp, err := client.KeystoneListProjects(req)
 	if err != nil {
@@ -196,7 +180,6 @@ func FetchAllProjects(auth CloudAuth) ([]ProjectInfo, error) {
 		}
 		return nil, fmt.Errorf("failed to list projects: %w", err)
 	}
-
 	var result []ProjectInfo
 	for _, proj := range *resp.Projects {
 		if proj.Name != "" && proj.Id != "" {

@@ -12,18 +12,18 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/abdo-farag/otc-cloudeye-exporter/internal/clients"
+	"github.com/abdo-farag/otc-cloudeye-exporter/internal/collector"
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/config"
+	"github.com/abdo-farag/otc-cloudeye-exporter/internal/grafana"
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/server"
-	"github.com/abdo-farag/otc-cloudeye-exporter/internal/clients"
-	"github.com/abdo-farag/otc-cloudeye-exporter/internal/grafana"
-	"github.com/abdo-farag/otc-cloudeye-exporter/internal/collector"
 )
 
 // Global state for health checks
 var (
-	isReady    int32 // 0 = not ready, 1 = ready
-	startTime  time.Time
+	isReady   int32 // 0 = not ready, 1 = ready
+	startTime time.Time
 )
 
 // HealthStatus represents the health check response
@@ -68,24 +68,17 @@ func getServiceEndpoints(parsedNamespaces []string, endpointCfg *config.Endpoint
 
 // validateProject checks if a project exists in the configured region
 func validateProject(auth *config.CloudAuth, projectName string) error {
-	// Fetch the list of all projects using the full CloudAuth struct (not just the region)
 	allProjects, err := config.FetchAllProjects(*auth)
 	if err != nil {
 		logs.Errorf("Error fetching projects for region %s: %v", auth.Region, err)
 		return err
 	}
-
-	// Log the fetched projects for debugging purposes
 	logs.Infof("Fetched Projects: %v", allProjects)
-
-	// Check if the project exists
 	for _, proj := range allProjects {
 		if proj.Name == projectName {
 			return nil // Project found
 		}
 	}
-
-	// If project is not found, log the error and return
 	logs.Errorf("Project %s not found in region %s", projectName, auth.Region)
 	return fmt.Errorf("project %s not found in region %s", projectName, auth.Region)
 }
@@ -103,14 +96,12 @@ func prometheusHandler(cfg *config.Config, projectClients []*clients.Clients, de
 		}
 
 		reg := prometheus.NewRegistry()
-
 		// Register your collectors for each client
 		for _, client := range projectClients {
 			collector := collector.NewCloudEyeCollector(cfg, namespaces)
 			collector.AttachClient(client)
 			reg.MustRegister(collector)
 		}
-
 		promhttp.HandlerFor(reg, promhttp.HandlerOpts{}).ServeHTTP(w, r)
 	}
 }
@@ -123,36 +114,26 @@ func grafanaDashboardHandler(cfg *config.Config, projectClients []*clients.Clien
 			http.Error(w, "Missing 'ns' (namespace) parameter", http.StatusBadRequest)
 			return
 		}
-
 		namespaces := strings.Split(query, ",")
 		if len(namespaces) != 1 {
 			http.Error(w, "Only one namespace is allowed at a time", http.StatusBadRequest)
 			return
 		}
 		namespace := namespaces[0]
-
-		if !strings.HasPrefix(namespace, "SYS.") {
-			http.Error(w, "Invalid namespace", http.StatusBadRequest)
-			return
-		}
-
 		var exports []collector.MetricExport
 		for _, client := range projectClients {
-			exports = collector.ExportMetricValuesBatch(client, cfg, namespace)
+			exports = collector.ExportMetricValuesBatch(client, cfg, namespace, client.ProjectName)
 			if len(exports) > 0 {
 				logs.Infof("✅ Exported %d metric values from namespace %s", len(exports), namespace)
 				break
 			}
 		}
-
 		if len(exports) == 0 {
 			http.Error(w, "No metric data found", http.StatusNotFound)
 			return
 		}
-
 		board := grafana.NewDefaultDashboard(namespace)
 		board.AddFromMetricValues(namespace, exports)
-
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(board)
 	}
@@ -166,7 +147,6 @@ func grafanaAlertsHandler(cfg *config.Config, projectClients []*clients.Clients)
 			http.Error(w, "Missing 'ns' (namespace) parameter", http.StatusBadRequest)
 			return
 		}
-
 		namespaces := strings.Split(query, ",")
 		if len(namespaces) != 1 {
 			http.Error(w, "Only one namespace is allowed at a time", http.StatusBadRequest)
@@ -174,28 +154,20 @@ func grafanaAlertsHandler(cfg *config.Config, projectClients []*clients.Clients)
 		}
 		namespace := namespaces[0]
 
-		if !strings.HasPrefix(namespace, "SYS.") {
-			http.Error(w, "Invalid namespace", http.StatusBadRequest)
-			return
-		}
-
 		var exports []collector.MetricExport
 		for _, client := range projectClients {
-			exports = collector.ExportMetricValuesBatch(client, cfg, namespace)
+			exports = collector.ExportMetricValuesBatch(client, cfg, namespace, client.ProjectName)
 			if len(exports) > 0 {
 				logs.Infof("✅ Exported %d metric values for alerts from namespace %s", len(exports), namespace)
 				break
 			}
 		}
-
 		if len(exports) == 0 {
 			http.Error(w, "No metric data found", http.StatusNotFound)
 			return
 		}
-
 		alerts := grafana.NewAlertBundle(namespace)
 		alerts.AddFromMetricValues(namespace, exports)
-
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(alerts)
 	}
@@ -205,17 +177,14 @@ func grafanaAlertsHandler(cfg *config.Config, projectClients []*clients.Clients)
 func healthHandler(projectClients []*clients.Clients) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		
 		status := HealthStatus{
 			Status:    "healthy",
 			Timestamp: time.Now(),
 			Uptime:    time.Since(startTime).String(),
 			Checks:    make(map[string]string),
 		}
-
 		// Basic health checks
 		status.Checks["server"] = "ok"
-		
 		// Check if clients are available (basic connectivity)
 		if len(projectClients) > 0 {
 			status.Checks["clients"] = "ok"
@@ -223,14 +192,12 @@ func healthHandler(projectClients []*clients.Clients) http.HandlerFunc {
 			status.Checks["clients"] = "no_clients"
 			status.Status = "degraded"
 		}
-
 		// Return appropriate HTTP status
 		if status.Status == "healthy" {
 			w.WriteHeader(http.StatusOK)
 		} else {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
-
 		json.NewEncoder(w).Encode(status)
 	}
 }
@@ -239,7 +206,6 @@ func healthHandler(projectClients []*clients.Clients) http.HandlerFunc {
 func readinessHandler(projectClients []*clients.Clients) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		
 		if atomic.LoadInt32(&isReady) == 0 {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			json.NewEncoder(w).Encode(HealthStatus{
@@ -249,29 +215,24 @@ func readinessHandler(projectClients []*clients.Clients) http.HandlerFunc {
 			})
 			return
 		}
-
 		status := HealthStatus{
 			Status:    "ready",
 			Timestamp: time.Now(),
 			Checks:    make(map[string]string),
 		}
-
 		// Check readiness criteria
 		status.Checks["server"] = "ready"
-		
 		if len(projectClients) > 0 {
 			status.Checks["clients"] = "ready"
 		} else {
 			status.Checks["clients"] = "no_clients"
 			status.Status = "not_ready"
 		}
-
 		if status.Status == "ready" {
 			w.WriteHeader(http.StatusOK)
 		} else {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
-
 		json.NewEncoder(w).Encode(status)
 	}
 }
@@ -281,7 +242,6 @@ func livenessHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		
 		json.NewEncoder(w).Encode(HealthStatus{
 			Status:    "alive",
 			Timestamp: time.Now(),
@@ -293,23 +253,18 @@ func livenessHandler() http.HandlerFunc {
 func main() {
 	// Initialize start time for uptime tracking
 	startTime = time.Now()
-	
 	// --- Step 0: Initialize logging ---
 	logs.InitLog("logs.yml")
-
 	// --- Step 1: Load config ---
 	var configPath string
 	flag.StringVar(&configPath, "config", "clouds.yml", "Path to the config YAML file")
 	flag.Parse()
-
 	cfg, endpointCfg, err := loadConfigs(configPath, "endpoints.yml")
 	if err != nil {
 		logs.Fatalf("Failed to load config: %v", err)
 	}
-
 	parsedNamespaces := parseNamespaces(cfg.Global.Namespaces)
 	serviceEndpoints := getServiceEndpoints(parsedNamespaces, endpointCfg)
-
 	// Log endpoint configuration for each namespace
 	for _, ns := range parsedNamespaces {
 		endpoint, err := endpointCfg.GetServiceEndpoint(ns)
@@ -319,18 +274,13 @@ func main() {
 		}
 		serviceEndpoints[ns] = endpoint
 	}
-
 	// --- Step 2: Validate Projects Before Initializing Clients ---
-	// Validate that projects are correct before trying to initialize any clients
 	for _, project := range cfg.Auth.Projects {
-		// Pass the whole `CloudAuth` struct to validate the project
 		if err := validateProject(&cfg.Auth, project.Name); err != nil {
-			// Log the error but do not stop processing other projects
 			logs.Errorf("Skipping project %s: %v", project.Name, err)
 			continue // Skip this project and continue with the next one
 		}
 	}
-
 	// --- Step 3: Initialize project clients with service endpoints ---
 	projectClients, err := clients.NewClientsWithEndpoints(cfg, &config.EndpointConfig{
 		Region:   endpointCfg.Region,
@@ -340,34 +290,24 @@ func main() {
 		logs.Fatalf("Failed to initialize OTC clients: %v", err)
 	}
 	logs.Infof("OTC clients initialized successfully for %d projects", len(projectClients))
-
 	// Mark as ready after successful initialization
 	atomic.StoreInt32(&isReady, 1)
-
 	// --- Step 4: Register HTTP endpoints ---
-	// Prometheus metrics endpoint
 	http.HandleFunc(cfg.Global.MetricPath, prometheusHandler(cfg, projectClients, parsedNamespaces))
-	
-	// Grafana dashboard preview endpoint
 	http.HandleFunc("/dashboards", grafanaDashboardHandler(cfg, projectClients))
-	
-	// Grafana alerts preview endpoint
 	http.HandleFunc("/alerts", grafanaAlertsHandler(cfg, projectClients))
-
 	// Kubernetes-standard health check endpoints
-	http.HandleFunc("/health", healthHandler(projectClients))      // General health check
-	http.HandleFunc("/healthz", healthHandler(projectClients))     // K8s health check alias
-	http.HandleFunc("/ready", readinessHandler(projectClients))    // K8s readiness probe
-	http.HandleFunc("/readyz", readinessHandler(projectClients))   // K8s readiness probe alias
-	http.HandleFunc("/live", livenessHandler())                    // K8s liveness probe
-	http.HandleFunc("/livez", livenessHandler())                   // K8s liveness probe alias
-
+	http.HandleFunc("/health", healthHandler(projectClients))
+	http.HandleFunc("/healthz", healthHandler(projectClients))
+	http.HandleFunc("/ready", readinessHandler(projectClients))
+	http.HandleFunc("/readyz", readinessHandler(projectClients))
+	http.HandleFunc("/live", livenessHandler())
+	http.HandleFunc("/livez", livenessHandler())
 	// --- Step 5: Start Server ---
 	logs.Infof("📡 Prometheus metrics at: %s?ns=%s", cfg.Global.MetricPath, cfg.Global.Namespaces)
-	logs.Infof("📊 Grafana Dashboard preview at: /dashboards?ns=<namespace>")
-	logs.Infof("🚨 Grafana Alerts preview at: /alerts?ns=<namespace>")
+	logs.Infof("📊 Grafana Dashboard preview at: /dashboards?ns=")
+	logs.Infof("🚨 Grafana Alerts preview at: /alerts?ns=")
 	logs.Infof("🏥 Health endpoints: /health, /ready, /live (with /healthz, /readyz, /livez aliases)")
-
 	// Ensure the clients are properly closed after server starts or an error happens
 	defer func() {
 		logs.Infof("Shutting down and closing clients...")
@@ -376,7 +316,6 @@ func main() {
 		}
 		logs.Info("All clients closed.")
 	}()
-
 	srvCfg := server.Config{
 		EnableHTTPS: cfg.Global.EnableHTTPS,
 		HTTPPort:    cfg.Global.Port,

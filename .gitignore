@@ -1,5 +1,7 @@
 .env
+.env.docker
 *.log
 log/**
 otc-cloudeye-exporter
 build/**
+stack/

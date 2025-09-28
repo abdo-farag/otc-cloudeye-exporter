@@ -6,11 +6,11 @@ import (
 
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/clients"
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/config"
+	"github.com/abdo-farag/otc-cloudeye-exporter/internal/constants"
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// If MetricExport is in clients:
 type CloudEyeCollector struct {
 	client   *clients.Clients
 	cfg      *config.Config
@@ -18,9 +18,19 @@ type CloudEyeCollector struct {
 }
 
 func NewCloudEyeCollector(cfg *config.Config, services []string) *CloudEyeCollector {
+	// Validate services against supported namespaces
+	validServices := make([]string, 0, len(services))
+	for _, service := range services {
+		if isValidNamespace(service) {
+			validServices = append(validServices, service)
+		} else {
+			logs.Warnf("Invalid/unsupported namespace: %s", service)
+		}
+	}
+
 	return &CloudEyeCollector{
 		cfg:      cfg,
-		services: services,
+		services: validServices,
 	}
 }
 
@@ -39,67 +49,37 @@ func (c *CloudEyeCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	for _, namespace := range c.services {
-		metricData := ExportMetricValuesBatch(c.client, c.cfg, namespace)
-
+		metricData := ExportMetricValuesBatch(c.client, c.cfg, namespace, c.client.ProjectName)
 		// Keep track of seen metrics to avoid duplicates
 		seenMetrics := make(map[string]struct{})
-
 		for _, m := range metricData {
 			// Create labels slice for the metric (without constant labels)
-			labels := make([]string, 0, len(m.Labels)) // Only variable labels here
+			labels := make([]string, 0, len(m.Labels))
 			values := make([]string, 0, len(m.Labels))
-
-			// Add existing labels from the metric (this will be the variable labels)
+			// Add existing labels from the metric (exclude constant labels)
 			for k, v := range m.Labels {
-				// Exclude constant labels from being added to the variable labels
-				if k != "resource_id" && k != "resource_name" && k != "unit" {
+				if !isConstantLabel(k) {
 					labels = append(labels, k)
 					values = append(values, v)
 				}
 			}
-
-			// Extract resource_id, resource_name, and unit from the metric data if available
-			resourceID, resourceName := m.Labels["resource_id"], m.Labels["resource_name"]
-			unit := m.Unit
-
-			// If any of those values are missing, provide a fallback value
-			if resourceID == "" {
-				resourceID = "unknown"
-			}
-			if resourceName == "" {
-				resourceName = "unknown"
-			}
-			if unit == "" {
-				unit = "unknown"
-			}
-
-			// Define constant labels and values (resource_id, resource_name, unit)
-			constantLabels := []string{"resource_id", "resource_name", "unit"}
+			// Extract constant labels with fallbacks
+			resourceID := getValueOrDefault(m.Labels[constants.LabelResourceID], constants.ResourceIDUnknown)
+			resourceName := getValueOrDefault(m.Labels[constants.LabelResourceName], constants.ResourceIDUnknown)
+			unit := getValueOrDefault(m.Unit, constants.ResourceIDUnknown)
+			// Define constant labels and values
+			constantLabels := []string{constants.LabelResourceID, constants.LabelResourceName, constants.LabelUnit}
 			constantValues := []string{resourceID, resourceName, unit}
-
-			// Convert namespace and metric name to the desired format
-			parts := strings.Split(namespace, ".")
-			service := strings.ToLower(parts[len(parts)-1])
-			metricNameLower := strings.ToLower(m.MetricName)
-
-			// Create the full metric name with prefix
-			metricName := fmt.Sprintf("%s_%s", service, metricNameLower)
-
-			// Check if the metric with the same labels was already sent
+			// Create metric name using namespace mapping
+			metricName := createMetricName(namespace, m.MetricName)
+			// Check for duplicates
 			labelKey := fmt.Sprintf("%s-%s-%s-%s-%s", metricName, resourceID, resourceName, unit, m.MetricName)
 			if _, exists := seenMetrics[labelKey]; exists {
 				continue
 			}
-
-			// Add the metric to the seen metrics map to prevent future duplicates
 			seenMetrics[labelKey] = struct{}{}
-
-			desc := prometheus.NewDesc(metricName, "Metric description", append(labels, constantLabels...), nil)
-
-			// Log each metric as it is published
+			desc := prometheus.NewDesc(metricName, "CloudEye metric", append(labels, constantLabels...), nil)
 			logs.Debugf("Publishing metric: %s value=%.2f labels=%v", metricName, m.Value, append(values, constantValues...))
-
-			// Send the metric to Prometheus with the most recent value
 			ch <- prometheus.MustNewConstMetric(
 				desc,
 				prometheus.GaugeValue,
@@ -108,4 +88,40 @@ func (c *CloudEyeCollector) Collect(ch chan<- prometheus.Metric) {
 			)
 		}
 	}
+}
+
+// Helper functions
+
+func isValidNamespace(namespace string) bool {
+	for _, validNs := range constants.AllNamespaces {
+		if namespace == validNs {
+			return true
+		}
+	}
+	return false
+}
+
+func isConstantLabel(key string) bool {
+	constantLabels := []string{constants.LabelResourceID, constants.LabelResourceName, constants.LabelUnit}
+	for _, label := range constantLabels {
+		if key == label {
+			return true
+		}
+	}
+	return false
+}
+
+func getValueOrDefault(value, defaultValue string) string {
+	if value == "" {
+		return defaultValue
+	}
+	return value
+}
+
+func createMetricName(namespace, metricName string) string {
+	// Convert namespace to service name
+	parts := strings.Split(namespace, ".")
+	service := strings.ToLower(parts[len(parts)-1])
+	metricNameLower := strings.ToLower(metricName)
+	return fmt.Sprintf("%s_%s", service, metricNameLower)
 }

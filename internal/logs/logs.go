@@ -38,12 +38,11 @@ type logger interface {
 }
 
 // -------- Config structs --------
-
 type FileConfig struct {
 	Filename   string `yaml:"filename,omitempty"`
 	Encoder    string `yaml:"encoder,omitempty"`
 	TimeFormat string `yaml:"time_format,omitempty"`
-	MaxSize    int    `yaml:"max_size,omitempty"`
+	MaxSizeMB  int    `yaml:"max_size_mb,omitempty"`
 	MaxBackups int    `yaml:"max_backups,omitempty"`
 	MaxAge     int    `yaml:"max_age,omitempty"`
 	Enabled    bool   `yaml:"enabled"`
@@ -110,9 +109,7 @@ func (l *LogLevel) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 // ---- Configuration loader ----
-
 type Unmarshal func(data []byte, cfg interface{}) error
-
 type ConfLoader struct {
 	Unmarshal Unmarshal
 }
@@ -140,8 +137,6 @@ func (c ConfLoader) LoadData(data []byte, cfg interface{}) error {
 }
 
 // ---- Logger Initialization ----
-
-// InitLog initializes the logger from a YAML config file using the "logging" key.
 func InitLog(logsConfPath string) {
 	realPath, pathErr := NormalizePath(logsConfPath)
 	if pathErr != nil {
@@ -163,7 +158,6 @@ func InitLog(logsConfPath string) {
 }
 
 // ---- Logger Methods ----
-
 func (zap *LoggerConstructor) Debug(args ...interface{}) {
 	zap.LogInstance.Debug(clearLineBreaks("", args...))
 }
@@ -206,7 +200,6 @@ func (zap *LoggerConstructor) Flush() {
 // isSyncErrorIgnorable checks if the sync error can be safely ignored
 func isSyncErrorIgnorable(err error) bool {
 	errStr := err.Error()
-	
 	// Common ignorable errors
 	ignorablePatterns := []string{
 		"invalid argument",
@@ -214,26 +207,22 @@ func isSyncErrorIgnorable(err error) bool {
 		"operation not supported",
 		"bad file descriptor",
 	}
-	
 	for _, pattern := range ignorablePatterns {
 		if strings.Contains(errStr, pattern) {
 			return true
 		}
 	}
-	
-	// Check for specific errno values that are safe to ignore
 	if pathErr, ok := err.(*os.PathError); ok {
 		if errno, ok := pathErr.Err.(syscall.Errno); ok {
 			switch errno {
 			case syscall.ENOTTY, // inappropriate ioctl for device
-				 syscall.EINVAL,  // invalid argument
-				 syscall.ENOTSUP, // operation not supported
-				 syscall.EBADF:   // bad file descriptor
+				syscall.EINVAL,  // invalid argument
+				syscall.ENOTSUP, // operation not supported
+				syscall.EBADF:   // bad file descriptor
 				return true
 			}
 		}
 	}
-	
 	return false
 }
 
@@ -244,8 +233,6 @@ func FlushLogAndExit(code int) {
 }
 
 // ---- Utilities ----
-
-// getMessage returns a formatted log message
 func getMessage(template string, fmtArgs []interface{}) string {
 	if len(fmtArgs) == 0 {
 		return template
@@ -274,11 +261,10 @@ func clearLineBreaks(template string, args ...interface{}) string {
 }
 
 // ---- Zap core/encoder/rotation ----
-
-func makeRotate(file string, maxSize int, maxBackups int, maxAge int, compress bool) *lumberjack.Logger {
+func makeRotate(file string, maxSizeMB int, maxBackups int, maxAge int, compress bool) *lumberjack.Logger {
 	return &lumberjack.Logger{
 		Filename:   file,
-		MaxSize:    maxSize / 1024 / 1024, // Convert bytes to megabytes
+		MaxSize:    maxSizeMB,
 		MaxBackups: maxBackups,
 		MaxAge:     maxAge,
 		LocalTime:  true,
@@ -317,7 +303,6 @@ func (w NoSyncWriteSyncer) Sync() error {
 func makeZapCore(c *Config) zapcore.Core {
 	var encoder zapcore.Encoder
 	var w zapcore.WriteSyncer
-
 	switch strings.ToUpper(c.Type) {
 	case "FILE":
 		if c.File == nil || !c.File.Enabled {
@@ -326,7 +311,7 @@ func makeZapCore(c *Config) zapcore.Core {
 		encoder = makeEncoder(c.File.Encoder, c.File.TimeFormat)
 		w = zapcore.AddSync(makeRotate(
 			c.File.Filename,
-			c.File.MaxSize,
+			c.File.MaxSizeMB,
 			c.File.MaxBackups,
 			c.File.MaxAge,
 			c.File.Compress,
@@ -366,7 +351,6 @@ func makeZapLogger(cfg []Config) *zap.Logger {
 }
 
 // ---- Path Normalization ----
-
 func NormalizePath(path string) (string, error) {
 	relPath, err := filepath.Abs(path)
 	if err != nil {

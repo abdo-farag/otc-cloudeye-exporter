@@ -2,6 +2,7 @@ package clients
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/config"
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
@@ -11,12 +12,18 @@ import (
 )
 
 type Clients struct {
-	CloudEyeV1 *ces.CesClient
-	CloudEyeV2 *cesv2.CesClient
-	RMS        *RmsClient
-	EVS        *evs.EvsClient
-	OBS        *ObsClient
+	CloudEyeV1  *ces.CesClient
+	CloudEyeV2  *cesv2.CesClient
+	RMS         *RmsClient
+	EVS         *evs.EvsClient
+	OBS         *ObsClient
+	ProjectName string
+	ProjectID   string
 }
+
+var (
+	cacheCleaner sync.Once
+)
 
 // NewClientsWithEndpoints creates all service clients using static OTC endpoints
 func NewClientsWithEndpoints(cfg *config.Config, epCfg *config.EndpointConfig) ([]*Clients, error) {
@@ -29,7 +36,6 @@ func NewClientsWithEndpoints(cfg *config.Config, epCfg *config.EndpointConfig) (
 		logs.Errorf("SYS.CES endpoint not defined in endpoints.yml!")
 		return nil, fmt.Errorf("SYS.CES endpoint missing")
 	}
-
 	rmsEndpoint, ok := epCfg.Services["SYS.RMS"]
 	if !ok {
 		logs.Errorf("SYS.RMS endpoint not defined in endpoints.yml!")
@@ -47,44 +53,39 @@ func NewClientsWithEndpoints(cfg *config.Config, epCfg *config.EndpointConfig) (
 	}
 
 	logs.Info("Initializing clients for region: ", region)
-
 	for _, project := range cfg.Auth.Projects {
 		logs.Info("Initializing clients for project: ", project.Name)
-
 		v1Client, err := InitCESClient(cfg, cesEndpoint, project.ID)
 		if err != nil {
 			logs.Errorf("❌ Failed to init CES v1 for project %s: %v", project.Name, err)
 			continue
 		}
-
 		v2Client, err := InitCESv2Client(cfg, cesEndpoint, project.ID)
 		if err != nil {
 			logs.Errorf("❌ Failed to init CES v2 for project %s: %v", project.Name, err)
 			continue
 		}
-
 		rmsClient, err := InitRmsClient(cfg, rmsEndpoint, region)
 		if err != nil {
 			logs.Errorf("❌ Failed to init RMS client for project %s: %v", project.Name, err)
 			continue
 		}
-
 		evsClient, err := InitEVSClient(cfg, evsEndpoint, project.ID)
 		if err != nil {
 			logs.Errorf("❌ Failed init EVS client for project %s: %v", project.Name, err)
 		}
-
-		obsClient, err := NewObsClient(cfg, obsEndpoint)
+		obsClient, err := InitObsClient(cfg, obsEndpoint)
 		if err != nil {
 			logs.Errorf("❌ Failed to init OBS client for project %s: %v", project.Name, err)
 		}
-
 		client := &Clients{
-			CloudEyeV1: v1Client,
-			CloudEyeV2: v2Client,
-			RMS:        rmsClient,
-			EVS:        evsClient,
-			OBS:        obsClient,
+			CloudEyeV1:  v1Client,
+			CloudEyeV2:  v2Client,
+			RMS:         rmsClient,
+			EVS:         evsClient,
+			OBS:         obsClient,
+			ProjectName: project.Name,
+			ProjectID:   project.ID,
 		}
 		clientsList = append(clientsList, client)
 	}
@@ -94,7 +95,6 @@ func NewClientsWithEndpoints(cfg *config.Config, epCfg *config.EndpointConfig) (
 		logs.Flush()
 		return nil, fmt.Errorf("no CES clients initialized successfully")
 	}
-
 	logs.Info("Successfully initialized clients")
 	logs.Flush()
 	return clientsList, nil
@@ -104,25 +104,21 @@ func NewClientsWithEndpoints(cfg *config.Config, epCfg *config.EndpointConfig) (
 func (c *Clients) Close() {
 	// Close other clients similarly (RMS, CloudEye, etc.)
 	if c.CloudEyeV1 != nil {
-		// Add the CloudEye v1 cleanup logic here, if applicable
+		// Add CloudEye v1 cleanup logic here, if applicable
 		logs.Info("Closed CloudEye V1 client")
 	}
-
 	if c.CloudEyeV2 != nil {
-		// Add the CloudEye v2 cleanup logic here, if applicable
+		// Add CloudEye v2 cleanup logic here, if applicable
 		logs.Info("Closed CloudEye V2 client")
 	}
-
 	if c.RMS != nil {
-		// Add the RMS client cleanup logic here, if applicable
+		// Add RMS client cleanup logic here, if applicable
 		logs.Info("Closed RMS client")
 	}
-
 	if c.EVS != nil {
 		logs.Info("Close EVS Client")
 	}
-
 	if c.OBS != nil {
-		logs.Info("Close EVS Client")
+		logs.Info("Close OBS Client")
 	}
 }

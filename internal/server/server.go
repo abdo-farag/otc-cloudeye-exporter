@@ -3,10 +3,9 @@ package server
 import (
 	"crypto/tls"
 	"fmt"
+	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
 	"net/http"
 	"os"
-
-	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
 )
 
 // Config holds server-level configuration
@@ -43,11 +42,9 @@ func Start(cfg Config, handler http.Handler) error {
 			go func() {
 				logs.Infof("🔐 Starting HTTPS server on %s", cfg.HTTPSPort)
 				server := &http.Server{
-					Addr:    cfg.HTTPSPort,
-					Handler: handler,
-					TLSConfig: &tls.Config{
-						MinVersion: tls.VersionTLS12,
-					},
+					Addr:      cfg.HTTPSPort,
+					Handler:   handler,
+					TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12},
 				}
 				err := server.ListenAndServeTLS(cfg.CertFile, cfg.KeyFile)
 				errs <- fmt.Errorf("HTTPS server error: %w", err)

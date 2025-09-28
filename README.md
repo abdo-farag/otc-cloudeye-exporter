@@ -94,10 +94,10 @@ logging:
 ### Modify the env file with your tenant values
 ```bash
 cat > .env << 'EOF'
-OS_DOMAIN_ID=your_domain_id_here
-OS_DOMAIN_NAME=your_domain_name_here
-OS_ACCESS_KEY=your_access_key_here
-OS_SECRET_KEY=your_secret_key_here
+export OS_DOMAIN_ID=your_domain_id_here
+export OS_DOMAIN_NAME=your_domain_name_here
+export OS_ACCESS_KEY=your_access_key_here
+export OS_SECRET_KEY=your_secret_key_here
 EOF
 
 source .env
@@ -205,8 +205,15 @@ The exporter serves on the configured port and will respond to health checks on 
 ## 🐳 Docker Deployment
 
 ```bash
+cat > .env-docker << 'EOF'
+OS_DOMAIN_ID=your_domain_id_here
+OS_DOMAIN_NAME=your_domain_name_here
+OS_ACCESS_KEY=your_access_key_here
+OS_SECRET_KEY=your_secret_key_here
+EOF
+
 docker run --rm --name cloudeye-exporter -p 9098:9098 -p 9099:9099 \
---env-file .env \
+--env-file .env-docker \
 ghcr.io/abdo-farag/otc-cloudeye-exporter:latest
 ```
 

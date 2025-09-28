@@ -1,5 +1,5 @@
 global:
-  port: "0.0.0.0:9098"
+  port: "0.0.0.0:9097"
   enable_https: false
   https_port: "0.0.0.0:9099"
   ## generate self-signed certificates for HTTPS using the following command:
@@ -13,6 +13,15 @@ global:
   namespaces: "SYS.ECS,SYS.VPC,SYS.RDS"
   endpoints_conf_path: "./endpoints.yml"
   ignore_ssl_verify: true
+  
+  api_max_retries: 5
+  api_retry_initial_delay_seconds: 5
+  api_retry_max_delay_seconds: 120
+  api_retry_backoff_multiplier: 2.0
+  metric_query_period_minutes: 1
+  metric_query_page_limit: 1000
+  metric_query_window_ms: 3600000
+
   export_rms_labels:
     resource_name: true
     project_id: false

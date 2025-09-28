@@ -2,12 +2,10 @@ package config
 
 import (
 	"fmt"
+	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
+	"gopkg.in/yaml.v3"
 	"os"
 	"strings"
-
-	"gopkg.in/yaml.v3"
-
-	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
 )
 
 type EndpointConfig struct {

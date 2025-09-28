@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/abdo-farag/otc-cloudeye-exporter/internal/config"
-	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs" // Importing logs package
+	"github.com/abdo-farag/otc-cloudeye-exporter/internal/logs"
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/core/auth/basic"
 	ces "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/ces/v1"
 	cesv2 "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/ces/v2"
