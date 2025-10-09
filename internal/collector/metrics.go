@@ -228,44 +228,53 @@ func fetchTimeSeriesData(client *clients.Clients, metrics []cesModel.MetricInfoL
 }
 
 func processMetrics(client *clients.Clients, cfg *config.Config, namespace string, batchData *[]cesModel.BatchMetricData) []MetricExport {
-	var (
-		results []MetricExport
-		mu      sync.Mutex
-		wg      sync.WaitGroup
-	)
-	for _, m := range *batchData {
-		if m.MetricName == "" {
-			logs.Warn("Metric with empty name found, skipping")
-			continue
-		}
+  var (
+    results []MetricExport
+    mu      sync.Mutex
+    wg      sync.WaitGroup
+  )
+  for _, m := range *batchData {
+    if m.MetricName == "" {
+      logs.Warn("Metric with empty name found, skipping")
+      continue
+    }
 
-		// Skip metrics that start with specific prefixes to avoid duplicates
-		if shouldSkipMetric(m.MetricName, namespace) {
-			logs.Debugf("Skipping duplicate metric: %s in namespace %s", m.MetricName, namespace)
-			continue
-		}
+    // Skip metrics that start with specific prefixes to avoid duplicates
+    if shouldSkipMetric(m.MetricName, namespace) {
+      logs.Debugf("Skipping duplicate metric: %s in namespace %s", m.MetricName, namespace)
+      continue
+    }
 
-		wg.Add(1)
-		go func(m cesModel.BatchMetricData) {
-			defer wg.Done()
-			// Extract and enrich labels
-			labels, resourceID := extractLabelsAndResourceID(m, namespace)
-			labels, resourceID = handleEVSIfNeeded(labels, resourceID, namespace, client)
-			labels = handleOBSIfNeeded(labels, m, namespace, client, RetryConfigFromConfig(cfg))
-			labels = enrichWithRMSIfNeeded(labels, resourceID, namespace, client, cfg, RetryConfigFromConfig(cfg))
-			// Ensure resource_name exists
-			if _, exists := labels[constants.LabelResourceName]; !exists {
-				labels[constants.LabelResourceName] = constants.ResourceIDUnknown
-			}
-			unit := safeUnit(m.Unit)
-			localResults := convertDatapointsToExports(m, labels, unit)
-			mu.Lock()
-			results = append(results, localResults...)
-			mu.Unlock()
-		}(m)
-	}
-	wg.Wait()
-	return results
+    wg.Add(1)
+    go func(m cesModel.BatchMetricData) {
+      defer wg.Done()
+      
+      // NORMALIZE METRIC NAME: Replace "slash" with underscore for Prometheus compatibility
+      m.MetricName = strings.ReplaceAll(m.MetricName, "SlAsH", "_")
+      // Remove multiple consecutive underscores
+      for strings.Contains(m.MetricName, "__") {
+        m.MetricName = strings.ReplaceAll(m.MetricName, "__", "_")
+      }
+      // Remove leading/trailing underscores
+      m.MetricName = strings.Trim(m.MetricName, "_")
+      // Extract and enrich labels
+      labels, resourceID := extractLabelsAndResourceID(m, namespace)
+      labels, resourceID = handleEVSIfNeeded(labels, resourceID, namespace, client)
+      labels = handleOBSIfNeeded(labels, m, namespace, client, RetryConfigFromConfig(cfg))
+      labels = enrichWithRMSIfNeeded(labels, resourceID, namespace, client, cfg, RetryConfigFromConfig(cfg))
+      // Ensure resource_name exists
+      if _, exists := labels[constants.LabelResourceName]; !exists {
+        labels[constants.LabelResourceName] = constants.ResourceIDUnknown
+      }
+      unit := safeUnit(m.Unit)
+      localResults := convertDatapointsToExports(m, labels, unit)
+      mu.Lock()
+      results = append(results, localResults...)
+      mu.Unlock()
+    }(m)
+  }
+  wg.Wait()
+  return results
 }
 
 func logUniqueMetricsCount(results []MetricExport, namespace string) int {
@@ -323,27 +332,84 @@ func fetchMetricTimeSeries(client *clients.Clients, metrics []cesModel.MetricInf
 		logs.Warn("No valid metrics to query.")
 		return nil, nil
 	}
-	req := &cesModel.BatchListMetricDataRequest{
-		Body: &cesModel.BatchListMetricDataRequestBody{
-			Metrics: batchMetrics,
-			From:    from,
-			To:      to,
-			Period:  period,
-			Filter:  "average",
-		},
+
+	maxBatchSize := cfg.Global.MetricQueryBatchSize
+	if maxBatchSize <= 0 || maxBatchSize > 10 {
+		maxBatchSize = 10 // Default to API limit
 	}
 	retryConfig := RetryConfigFromConfig(cfg)
-	resp, err := withRetry(
-		func() (*cesModel.BatchListMetricDataResponse, error) {
-			return client.CloudEyeV1.BatchListMetricData(req)
-		},
-		retryConfig,
-		"batch list metric data",
-	)
-	if err != nil {
-		return nil, fmt.Errorf("BatchListMetricData error after retries: %w", err)
+
+	var allResults []cesModel.BatchMetricData
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	errChan := make(chan error, (len(batchMetrics)+maxBatchSize-1)/maxBatchSize)
+
+	// Process metrics in chunks of 10
+	for i := 0; i < len(batchMetrics); i += maxBatchSize {
+		end := i + maxBatchSize
+		if end > len(batchMetrics) {
+			end = len(batchMetrics)
+		}
+
+		batch := batchMetrics[i:end]
+		wg.Add(1)
+
+		go func(batchChunk []cesModel.MetricInfo, chunkIndex int) {
+			defer wg.Done()
+
+			req := &cesModel.BatchListMetricDataRequest{
+				Body: &cesModel.BatchListMetricDataRequestBody{
+					Metrics: batchChunk,
+					From:    from,
+					To:      to,
+					Period:  period,
+					Filter:  "average",
+				},
+			}
+
+			resp, err := withRetry(
+				func() (*cesModel.BatchListMetricDataResponse, error) {
+					return client.CloudEyeV1.BatchListMetricData(req)
+				},
+				retryConfig,
+				fmt.Sprintf("batch list metric data (chunk %d, size %d)", chunkIndex, len(batchChunk)),
+			)
+
+			if err != nil {
+				logs.Errorf("Failed to fetch metrics chunk %d (size %d): %v", chunkIndex, len(batchChunk), err)
+				errChan <- err
+				return
+			}
+
+			if resp.Metrics != nil && len(*resp.Metrics) > 0 {
+				mu.Lock()
+				allResults = append(allResults, *resp.Metrics...)
+				mu.Unlock()
+				logs.Debugf("Successfully fetched %d metrics from chunk %d", len(*resp.Metrics), chunkIndex)
+			}
+		}(batch, i/maxBatchSize)
 	}
-	return resp.Metrics, nil
+
+	wg.Wait()
+	close(errChan)
+
+	// Check for errors
+	var errors []error
+	for err := range errChan {
+		errors = append(errors, err)
+	}
+
+	if len(errors) > 0 {
+		// Return partial results if some chunks succeeded
+		if len(allResults) > 0 {
+			logs.Warnf("Partial results: %d metrics fetched with %d chunk failures", len(allResults), len(errors))
+			return &allResults, nil
+		}
+		return nil, fmt.Errorf("all batch chunks failed: first error: %w", errors[0])
+	}
+
+	logs.Debugf("Successfully fetched total of %d metrics across %d chunks", len(allResults), (len(batchMetrics)+maxBatchSize-1)/maxBatchSize)
+	return &allResults, nil
 }
 
 func buildBatchMetrics(metrics []cesModel.MetricInfoList) []cesModel.MetricInfo {

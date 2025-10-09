@@ -1,5 +1,5 @@
 global:
-  port: "0.0.0.0:9097"
+  port: "0.0.0.0:9098"
   enable_https: false
   https_port: "0.0.0.0:9099"
   ## generate self-signed certificates for HTTPS using the following command:
@@ -7,9 +7,9 @@ global:
   tls_cert: "cert.pem"
   tls_key: "key.pem"
   metric_path: "/metrics"
-  scrape_batch_size: 300
+  scrape_batch_size: 1000
   resource_sync_interval_minutes: 1
-  rms_retry_times: 1
+  rms_retry_times: 5
   namespaces: "SYS.ECS,SYS.VPC,SYS.RDS"
   endpoints_conf_path: "./endpoints.yml"
   ignore_ssl_verify: true
