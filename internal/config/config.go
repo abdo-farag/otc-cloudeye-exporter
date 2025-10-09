@@ -56,6 +56,7 @@ type Global struct {
 	MetricQueryPeriodMinutes    int             `yaml:"metric_query_period_minutes"`
 	MetricQueryPageLimit        int             `yaml:"metric_query_page_limit"`
 	MetricQueryWindowMs         int             `yaml:"metric_query_window_ms"`
+	MetricQueryBatchSize        int             `yaml:"metric_query_batch_size"`
 }
 
 type Config struct {
